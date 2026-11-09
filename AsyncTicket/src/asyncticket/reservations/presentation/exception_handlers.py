@@ -54,13 +54,12 @@ def to_shared_exception(error : ReservationError) -> SharedException :
 def register_reservation_errors(app : FastAPI) -> None :
     """
     앱에 예매 도메인 예외 처리기 등록
-    팀 공통 처리기를 먼저 등록한 뒤 호출
     """
 
-    shared_handler = app.exception_handlers[SharedException]
 
     async def reservation_error(request : Request, exc : ReservationError) -> JSONResponse : 
-        # 팀 공통 예외로 바꿔서 통역된 예외를 팀 공통 처리기에 넘겨서 응답을 만든다
+        # 팀 공통 처리기는 예외가 났을 때 꺼낸다 (등록 순서에 의존하지 않음)
+        shared_handler = app.exception_handlers[SharedException]
         return await shared_handler(request, to_shared_exception(exc))
 
     app.add_exception_handler(ReservationError, reservation_error)
