@@ -105,6 +105,14 @@ class ReservationRepositoryTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.db.flush()
 
+    def get_row(self, reserv_id):
+        """DB에서 예매 행을 새로 읽는 도우미
+        (UPDATE 문은 세션에 올라와 있는 객체를 바꾸지 않으므로, 세션 기억을 비우고 다시 읽는다)"""
+        self.db.expire_all()
+        return self.db.get(ReservationModel, reserv_id)
+
+
+
     def link_seat_and_payment(self, *, reserv_id, perf_seat_id, pay_id):
         """좌석·결제 쪽에서 예매 ID로 연결하는 도우미"""
         self.db.add(PerformanceSeats(
@@ -211,14 +219,12 @@ class ReservationRepositoryTests(unittest.IsolatedAsyncioTestCase):
         confirm_time = datetime(2026, 11, 5, 0, 3)    # SQLite는 타임존을 버리므로 타임존 없이
         reservation.confirm(ReservedPayment(reserved_pay_id=30), confirm_time)
 
-        # 실행
-        await self.repository.reserv_status_update(reservation)
+        # 실행 : DB가 아직 예매대기일 때만 저장
+        saved = await self.repository.reserv_status_update(reservation, ReservationStatus.PENDING)
 
-        # 확인 : DB 행이 바뀌었다
-        row = self.db.get(ReservationModel, 5)
-        self.assertEqual(row.status, "CONFIRMED")
-        self.assertEqual(row.confirmed_at, confirm_time)
-        self.assertIsNone(row.canceled_at)
+        # 확인 : 저장 성공, DB 행이 바뀌었다
+        self.assertTrue(saved)
+        row = self.get_row(5)
 
 
     async def test_취소하면_상태와_취소일시가_저장되고_확정일시는_그대로다(self):
@@ -229,22 +235,40 @@ class ReservationRepositoryTests(unittest.IsolatedAsyncioTestCase):
         cancel_time = datetime(2026, 11, 20, 15)    # SQLite는 타임존을 버리므로 타임존 없이
         reservation.cancel(OWNER_ID, cancel_time)
 
-        # 실행
-        await self.repository.reserv_status_update(reservation)
+        # 실행 : DB가 아직 예매확정일 때만 저장
+        saved = await self.repository.reserv_status_update(reservation, ReservationStatus.CONFIRMED)
 
-        # 확인 : DB 행이 바뀌었다
-        row = self.db.get(ReservationModel, 5)
-        self.assertEqual(row.status, "CANCELED")                         # enum → DB 문자열
-        self.assertEqual(row.canceled_at, cancel_time)                   # 취소한 시각 (created_at 아님)
-        self.assertEqual(row.confirmed_at, datetime(2026, 11, 5))        # 확정 일시는 그대로
+        # 확인 : 저장 성공, DB 행이 바뀌었다
+        self.assertTrue(saved)
+        row = self.get_row(5)
 
-    async def test_없는_예매를_저장하면_LookupError(self):
+
+    async def test_없는_예매를_저장하면_False(self):
         self.insert_reservation(reserv_id=5)
         reservation = await self.repository.find_by_reserv_id(5)
         reservation.reserv_id = 999                                      # DB에 없는 예매 ID
 
-        with self.assertRaises(LookupError):
-            await self.repository.reserv_status_update(reservation)
+        saved = await self.repository.reserv_status_update(reservation, ReservationStatus.CONFIRMED)
+
+        self.assertFalse(saved)                                          # 바뀐 줄 0개
+
+    async def test_그_사이_상태가_바뀌었으면_저장하지_않는다(self):
+        # 준비 : 확정 요청이 예매대기를 읽었는데, 그 사이 만료 작업이 먼저 EXPIRED로 저장한 상황
+        self.insert_reservation(reserv_id=5, status="PENDING", confirmed=False,
+                                created_at=datetime(2026, 11, 5, 0, 0))
+        reservation = await self.repository.find_by_reserv_id(5)         # 확정 요청이 읽은 값 (PENDING)
+        self.get_row(5).status = "EXPIRED"                               # 만료 작업이 먼저 저장
+        self.db.flush()
+        reservation.confirm(ReservedPayment(reserved_pay_id=30), datetime(2026, 11, 5, 0, 3))
+
+        # 실행 : 예매대기일 때만 저장하라고 요청
+        saved = await self.repository.reserv_status_update(reservation, ReservationStatus.PENDING)
+
+        # 확인 : 저장 실패, 만료 상태가 그대로 (확정이 덮어쓰지 않음)
+        self.assertFalse(saved)
+        row = self.get_row(5)
+        self.assertEqual(row.status, "EXPIRED")
+        self.assertIsNone(row.confirmed_at)
 
 
     # =========================================================
@@ -285,13 +309,12 @@ class ReservationRepositoryTests(unittest.IsolatedAsyncioTestCase):
         reservation.expire(datetime(2026, 11, 5, 0, 5))
 
         # 실행
-        await self.repository.reserv_status_update(reservation)
+        saved = await self.repository.reserv_status_update(reservation, ReservationStatus.PENDING)
 
         # 확인
-        row = self.db.get(ReservationModel, 5)
-        self.assertEqual(row.status, "EXPIRED")
-        self.assertIsNone(row.confirmed_at)    # 확정된 적 없음
-        self.assertIsNone(row.canceled_at)     # 취소와는 다름
+        self.assertTrue(saved)
+        row = self.get_row(5)
+
 
 
 if __name__ == "__main__":

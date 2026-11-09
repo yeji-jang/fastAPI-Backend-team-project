@@ -50,6 +50,8 @@ class FakeRepository:
         self.items: dict[int, Reservation] = {}
         self.next_id = 1
         self.status_updates = 0
+        self.conflict = False   # True : "그 사이 다른 요청이 상태를 바꿔서" 저장이 실패하는 상황
+
 
     async def reserv_add(self, reservation):
         reservation.reserv_id = self.next_id
@@ -64,8 +66,12 @@ class FakeRepository:
     async def find_all_by_ticketholder(self, ticketholder_id):
         return [r for r in self.items.values() if r.is_owned(ticketholder_id)]
 
-    async def reserv_status_update(self, reservation):
+    async def reserv_status_update(self, reservation, expected_status):
+        if self.conflict:
+            return False
         self.status_updates += 1
+        return True
+
 
     async def find_pending_created_before(self, before):
         return [r for r in self.items.values()
@@ -380,6 +386,39 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assert_error(error, 409, "RESERVATION_EXPIRED")
         self.assertEqual(self.repository.status_updates, 0)          # 저장 안 됨
+
+
+    # =========================================================
+    # 7. 동시 요청 (저장 직전에 다른 요청이 상태를 바꾼 경우)
+    # =========================================================
+    async def test_확정_저장_전에_만료되었으면_409(self):
+        await self.store(status=ReservationStatus.PENDING)
+        self.repository.conflict = True                              # 그 사이 만료 작업이 먼저 저장
+
+        with self.assertRaises(ReservationError) as error:
+            await self.service.confirm(reserv_id=1, pay_id=30, now=NOW + timedelta(minutes=3))
+
+        self.assert_error(error, 409, "RESERVATION_NOT_PENDING")
+
+    async def test_취소_저장_전에_이미_취소되었으면_409이고_좌석을_놓지_않는다(self):
+        await self.store(status=ReservationStatus.CONFIRMED)
+        self.repository.conflict = True                              # 그 사이 다른 취소 요청이 먼저 저장
+
+        with self.assertRaises(ReservationError) as error:
+            await self.service.cancel(reserv_id=1, ticketholder_id=OWNER_ID, now=NOW)
+
+        self.assert_error(error, 409, "RESERVATION_NOT_CANCELABLE")
+        self.assertEqual(self.seat_allocation.released, [])          # 좌석 두 번 해제 방지
+
+    async def test_만료_저장_전에_확정되었으면_건너뛰고_좌석을_놓지_않는다(self):
+        await self.store(status=ReservationStatus.PENDING)
+        self.repository.conflict = True                              # 그 사이 확정 요청이 먼저 저장
+
+        expired = await self.service.expire_pending(now=NOW + timedelta(minutes=5))
+
+        self.assertEqual(expired, [])                                # 만료된 예매 없음
+        self.assertEqual(self.seat_allocation.released, [])          # 결제한 사람의 좌석은 그대로
+
 
 
 class FakeSeatService:
