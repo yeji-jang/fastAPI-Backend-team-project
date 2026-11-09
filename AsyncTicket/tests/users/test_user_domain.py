@@ -100,6 +100,117 @@ class UserDomainTests(unittest.TestCase):
         self.assertTrue(user.is_withdrawn)
         self.assertIsNotNone(user.deleted_at)
 
+    def test_invalid_email_raises_exception(self):
+        with self.assertRaises(ValidationException):
+            User.create(
+                email="invalid-email",
+                name="테스트",
+                raw_password="Password1!",
+                phone_number="010-1234-5678",
+                hasher=FakePasswordHasher(),
+            )
+
+    def test_invalid_name_raises_exception(self):
+        with self.assertRaises(ValidationException):
+            User.create(
+                email="test@example.com",
+                name="A",
+                raw_password="Password1!",
+                phone_number="010-1234-5678",
+                hasher=FakePasswordHasher(),
+            )
+
+    def test_invalid_phone_number_raises_exception(self):
+        with self.assertRaises(ValidationException):
+            User.create(
+                email="test@example.com",
+                name="테스트",
+                raw_password="Password1!",
+                phone_number="",
+                hasher=FakePasswordHasher(),
+            )
+
+    def test_password_longer_than_72_bytes_raises_exception(self):
+        long_password = "가" * 30 + "A1!"
+
+        with self.assertRaises(ValidationException):
+            User.create(
+                email="test@example.com",
+                name="테스트",
+                raw_password=long_password,
+                phone_number="010-1234-5678",
+                hasher=FakePasswordHasher(),
+            )
+
+    def test_non_owner_cannot_withdraw_user(self):
+        user = User(
+            user_id=1,
+            email="user@example.com",
+            name="사용자",
+            password_hash="hashed:Password1!",
+            role=UserRole.BUYER,
+            phone_number="010-1234-5678",
+        )
+
+        other_user = User(
+            user_id=2,
+            email="other@example.com",
+            name="다른사용자",
+            password_hash="hashed:Password1!",
+            role=UserRole.BUYER,
+            phone_number="010-9999-9999",
+        )
+
+        from asyncticket.shared.core.exceptions import (
+            ForbiddenException,
+        )
+
+        with self.assertRaises(ForbiddenException):
+            user.withdraw(other_user)
+
+    def test_admin_can_withdraw_other_user(self):
+        user = User(
+            user_id=1,
+            email="user@example.com",
+            name="사용자",
+            password_hash="hashed:Password1!",
+            role=UserRole.BUYER,
+            phone_number="010-1234-5678",
+        )
+
+        admin = User(
+            user_id=99,
+            email="admin@example.com",
+            name="관리자",
+            password_hash="hashed:Password1!",
+            role=UserRole.ADMIN,
+            phone_number="010-9999-9999",
+        )
+
+        user.withdraw(admin)
+
+        self.assertTrue(user.is_withdrawn)
+
+    def test_same_password_cannot_be_used(self):
+        user = User.create(
+            email="test@example.com",
+            name="테스트",
+            raw_password="Password1!",
+            phone_number="010-1234-5678",
+            hasher=FakePasswordHasher(),
+        )
+
+        from asyncticket.shared.core.exceptions import (
+            BadRequestException,
+        )
+
+        with self.assertRaises(BadRequestException):
+            user.change_password(
+                old_password="Password1!",
+                new_password="Password1!",
+                hasher=FakePasswordHasher(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

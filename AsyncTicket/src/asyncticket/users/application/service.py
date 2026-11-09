@@ -142,8 +142,5 @@ class UserApplicationService:
         현재 상태를 확인한다.
         """
 
-        if user.is_withdrawn:
-            # Domain 내부의 공통 보호 규칙을 재사용한다.
-            user._ensure_active()
-
+        user.ensure_active()
         return user

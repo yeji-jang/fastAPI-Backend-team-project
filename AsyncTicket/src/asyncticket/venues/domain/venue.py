@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 
 from asyncticket.shared.core.exceptions import ValidationException
 
@@ -18,6 +19,7 @@ class Venue:
 
     def __post_init__(self):
         self.is_valid_name(self.name)
+        self.is_valid_post_no(self.post_no)
 
     @classmethod
     def create(
@@ -42,11 +44,19 @@ class Venue:
         post_no: str,
     ) -> None:
         self.is_valid_name(name)
+        self.is_valid_post_no(post_no)
 
         self.name = name
         self.address = address
         self.address_detail = address_detail
         self.post_no = post_no
+
+    @staticmethod
+    def is_valid_post_no(post_no):
+        if not isinstance(post_no, str) or re.fullmatch(r"[0-9]{5}", post_no) is None:
+            raise ValidationException(
+                field_errors={"post_no": ["우편번호는 숫자 5자리여야 합니다."]}
+            )
 
     @staticmethod
     def is_valid_name(name):
