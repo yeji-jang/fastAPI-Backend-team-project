@@ -21,8 +21,13 @@
     5. 예매 조회 (본인 예매 단건, 목록)
         1) 예매 조회
         2) 본인 예매만 조회
+    6. 예매대기 만료(순서) :
+        1) 만료 대상 조회 (지금 - 결제 대기 시간 이전에 생성된 예매대기)
+        2) 예매 만료
+        3) 상태 저장
+        4) 좌석 해제
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 # <Domain - 예매>
 from asyncticket.reservations.domain.repository import ReservationRepository
@@ -31,6 +36,7 @@ from asyncticket.reservations.domain.reservation import(
     TicketHolder,
     ReservedPayment,
     ReservationNotFoundError,
+    PENDING_EXPIRE_MINUTES,
 )
 from asyncticket.reservations.domain.service import (
     ReservationChecker,
@@ -69,6 +75,15 @@ class ReservationService:
                 error_code="RESERVATION_NOT_FOUND")
         return reservation
 
+    # 좌석 해제 (좌석 연결이 남아 있을 때만, 취소, 만료 공통으로!)
+    async def _release_seat(self, reservation : Reservation) -> None :
+        if reservation.seat.reserved_seat_id is None :
+            return
+        await self.seat_allocation.release(
+            perf_id=reservation.performance.reserved_perf_id,
+            perf_seat_id=reservation.seat.reserved_seat_id,
+            reserv_id=reservation.reserv_id,
+        )
 
     # 2. 예매하기 : 예매대기(PENDING)로 저장하고 좌석을 잡는다
     async def reserve(
@@ -165,13 +180,8 @@ class ReservationService:
         await self.repository.reserv_status_update(reservation)
 
         # 4) 좌석 해제 (좌석 연결이 남아 있을 때만)
-        if reservation.seat.reserved_seat_id is not None : 
-            await self.seat_allocation.release(
-                perf_id=reservation.performance.reserved_perf_id,
-                perf_seat_id=reservation.seat.reserved_seat_id,
-                reserv_id=reservation.reserv_id
-            )
-
+        await self._release_seat(reservation)
+        
         return reservation
 
     # 5-1. 예매 조회 : 본인 예매 단건
@@ -197,3 +207,27 @@ class ReservationService:
         ticketholder_id : int,
     ) -> list[Reservation] : 
         return await self.repository.find_all_by_ticketholder(ticketholder_id)
+
+    # 6. 예매대기 만료 : 결제 대기 시간이 지난 예매대기(PENDING) -> 예매만료(EXPIRED), 좌석해제
+    async def expire_pending(
+        self,
+        *,
+        now : datetime | None = None,
+    ) -> list[Reservation] : 
+        now = now or datetime.now(timezone.utc)
+
+        # 1) 만료 대상 조회 (기준 시각 = 지금 - 결제 대기 시간)
+        before = now - timedelta(minutes=PENDING_EXPIRE_MINUTES)
+        reservations = await self.repository.find_pending_created_before(before)
+
+        for reservation in reservations :
+            # 2) 만료 시간이 지났는지 엔티티가 한번 더 판단
+            reservation.expire(now)
+
+            # 3) 상태 저장 (status)
+            await self.repository.reserv_status_update(reservation)
+
+            # 4) 좌석 해제 
+            await self._release_seat(reservation)
+
+        return reservations
