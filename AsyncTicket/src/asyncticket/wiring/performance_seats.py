@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from asyncticket.seats.application.service import PerformanceSeatService
 from asyncticket.seats.infrastructure.repositories import (
-    SqlAlchemyPerformanceSeatRepository, SqlAlchemySeatInfoRepository,
+    SqlAlchemyPerformanceSeatRepository,
+    SqlAlchemySeatInfoRepository,
 )
 
 
@@ -20,13 +21,15 @@ def provide_performance_seat_service() -> PerformanceSeatService:
 # 2) 조회·예매 연결·해제에 쓸 동일 세션 서비스 구성
 def create_performance_seat_service(session: AsyncSession) -> PerformanceSeatService:
     return PerformanceSeatService(
-        SqlAlchemyPerformanceSeatRepository(session), SqlAlchemySeatInfoRepository(session),
+        SqlAlchemyPerformanceSeatRepository(session),
+        SqlAlchemySeatInfoRepository(session),
     )
 
 
 # 3) 기본 주입 지점을 실제 서비스 생성 함수로 교체
 def wire_dependencies(
-    app: FastAPI, db_dependency: Callable[..., Any] | None = None,
+    app: FastAPI,
+    db_dependency: Callable[..., Any] | None = None,
 ) -> None:
     if db_dependency is None:
         from asyncticket.shared.core.database import get_db
@@ -34,7 +37,11 @@ def wire_dependencies(
         db_dependency = get_db
 
     # 4) 요청 세션으로 개별 좌석 서비스 생성
-    def performance_seat_service(session: Annotated[AsyncSession, Depends(db_dependency)]) -> PerformanceSeatService:
+    def performance_seat_service(
+        session: Annotated[AsyncSession, Depends(db_dependency)],
+    ) -> PerformanceSeatService:
         return create_performance_seat_service(session)
 
-    app.dependency_overrides[provide_performance_seat_service] = performance_seat_service
+    app.dependency_overrides[provide_performance_seat_service] = (
+        performance_seat_service
+    )

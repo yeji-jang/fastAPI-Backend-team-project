@@ -4,6 +4,8 @@
 from decimal import Decimal
 from typing import Annotated
 from asyncticket.seats.domain.enums import SeatGrade, SeatStatus
+from asyncticket.seats.domain.seat_info import SeatInfo
+from asyncticket.shared.core.exceptions import ValidationException
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 SeatName = Annotated[str, StringConstraints(min_length=1, max_length=255)]
@@ -21,12 +23,13 @@ class SeatConfigurationRequest(BaseModel):
     # 1) 좌석명·수량·중복 입력 검사
     @model_validator(mode="after")
     def validate_names(self):
-        if not self.name.strip() or any(not name.strip() for name in self.seat_seqs):
-            raise ValueError("등급명과 좌석명은 공백일 수 없습니다.")
-        if len(self.seat_seqs) != self.total_seat:
-            raise ValueError("좌석명 개수와 등급 좌석 수가 일치해야 합니다.")
-        if len(set(self.seat_seqs)) != len(self.seat_seqs):
-            raise ValueError("중복된 좌석명이 있습니다.")
+        try:
+            SeatInfo.validate_request_configuration(
+                self.name, self.total_seat, self.seat_seqs
+            )
+        except ValidationException as error:
+            # HTTP 입력은 기존 Pydantic 검증 응답으로 전달한다.
+            raise ValueError(error.message) from error
         return self
 
 
