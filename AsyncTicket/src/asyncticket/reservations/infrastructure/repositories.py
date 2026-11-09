@@ -14,7 +14,7 @@ from datetime import datetime
 
 # <sqlalchemy>
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 # <Domain - 예매>
 from asyncticket.reservations.domain.enums import ReservationStatus # 예매상태
@@ -104,27 +104,33 @@ class SqlAlchemyReservationRepository(ReservationRepository):
         return [self._to_entity(row) for row in rows]
 
 
-    # 4) 바뀐 상태(확정,취소)를 저장
-    async def reserv_status_update(self, 
-                                   reservation:Reservation) -> None :
-        """4) 예매 상태 변경(확정, 취소)을 저장"""
-        # ① 저장할 예매 행을 DB에서 찾기 (예매 테이블만 있으면 되므로 JOIN 없이)
+    # 4) 바뀐 상태(확정, 취소, 만료)를 저장 - DB 상태가 expected_status일 때만
+    async def reserv_status_update(self,
+                                   reservation:Reservation,
+                                   expected_status:ReservationStatus) -> bool :
+        """4) DB 상태가 expected_status일 때만 상태 변경을 저장, 성공 여부를 돌려줌"""
+        # ① 조건부 UPDATE 조립
+        #    예매 ID + "지금 DB 상태가 expected_status인 경우"에만 바꾼다
+        #    (확정·만료가 동시에 들어와도 먼저 저장한 쪽만 성공, 나중 쪽은 0줄)
         statement = (
-            select(ReservationModel)
-            .where(ReservationModel.reserv_id == reservation.reserv_id)
+            update(ReservationModel)
+            .where(
+                ReservationModel.reserv_id == reservation.reserv_id,
+                ReservationModel.status == expected_status.value,
+            )
+            .values(
+                status=reservation.status.value,        # enum -> DB문자열
+                confirmed_at=reservation.confirmed_at,  # 확정 일시 (확정 시)
+                canceled_at=reservation.canceled_at,    # 취소 일시 (취소 시)
+            )
+            .execution_options(synchronize_session=False)
         )
+
+        # ② DB에서 실행 (commit은 get_db가 함)
         result = await self.session.execute(statement)
-        row = result.scalar_one_or_none()
-        if row is None : 
-            raise LookupError(f"저장할 예매가 없습니다: reserv_id={reservation.reserv_id}")
 
-        # ② 엔티티(confirm()·cancel()로 바뀐 값) → DB 행에 옮기기
-        row.status = reservation.status.value       # enum -> DB문자열
-        row.confirmed_at = reservation.confirmed_at   # 확정 일시 (확정 시)
-        row.canceled_at = reservation.canceled_at     # 취소 일시 (취소 시)
-
-        # ③ UPDATE만 보내기 (commit은 get_db가 함)
-        await self.session.flush()
+        # ③ 바뀐 줄이 1줄이면 성공, 0줄이면 그 사이 상태가 바뀌었거나 예매가 없음
+        return result.rowcount == 1
 
 
     # 5) 만료 대상 예매대기 목록을 찾고
