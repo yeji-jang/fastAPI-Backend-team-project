@@ -28,6 +28,9 @@ class SqlAlchemyPaymentRepository(PaymentRepository):
             refunded_at = row.refunded_at,
         )
 
+    async def find_by_reserv_id(self, reserv_id: int) -> Payment | None:
+    """예약 ID로 결제 정보 조회"""
+
     async def save(self, payment: Payment) -> None:
         if payment.pay_id is None:
             row = PaymentModel(

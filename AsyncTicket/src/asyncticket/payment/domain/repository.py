@@ -14,6 +14,10 @@ class PaymentRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def find_by_reserv_id(self, reserv_id: int) -> Payment | None:
+        """예약 ID로 결제 정보 조회"""
+
+    @abstractmethod
     async def save(self, payment: Payment) -> None:
         """결제 상태를 저장한다. 새 결제면 받은 pay_id·created_at을 payment에 채운다.
         commit은 요청 세션(get_db)이 끝날 때 한다."""

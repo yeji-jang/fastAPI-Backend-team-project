@@ -1,61 +1,36 @@
-"""응용 계층: 결제 조회와 상태 변경 순서를 조율한다."""
-
-
-from datetime import datetime
-from decimal import Decimal
-
-
-from asyncticket.payment.domain.payment import Payment
-from asyncticket.payment.domain.enums import PaymentStatus
-from asyncticket.payment.domain.repository import PaymentRepository
-from asyncticket.shared.core.exceptions import ConflictException, NotFoundException
-
+"“”응용 계층: 결제 조회와 상태 변경 순서를 조율한다.“”"
+from payment.domain.repository import PaymentRepository
+from payment.domain.service import PaymentProcess
+from payment.domain.payment import Payment
+from payment.domain.exceptions import PaymentNotFoundException
 
 class PaymentService:
-    def __init__(self, repository: PaymentRepository):
-        # 저장 계약만 받는다. 세션과 테이블 클래스는 인프라 저장소 안에 있다.
-        self.repository = repository
 
-    async def get_payment(self, pay_id: int) -> Payment:
-        payment = await self.repository.find_by_id(pay_id)
-        if payment is None:
-            raise NotFoundException(
-                "결제를 찾을 수 없습니다.", error_code = "PAYMENT_NOT_FOUND"
-            )
+    def __init__(self, payment_repo: PaymentRepository, processor: PaymentProcess):
+        self.payment_repo = payment_repo
+        self.processor = processor 
+
+
+    # 결제 등록 (예약 등록 직후 함께 호출)
+    async def create_payment(self, reserv_id: int, amount: int):
+        payment = Payment.create(reserv_id, amount)
+        await payment_repo.save(payment)
+
+    # 결제 승인
+    async def approve_payment(self, payment_key: str, reserv_id: int, amount: int):
+        payment = await self.get_payment(reserv_id)
+        payment.approve(payment_key, reserv_id, amount, self.processor)
+
+
+    # 결제 취소
+    async def cancel_payment(self, reserv_id: int, reason: str):
+        payment = await self.get_payment(reserv_id)
+        payment.cancel(reason)
+
+    # 예약 ID로 결제정보 조회
+    async def get_payment(reserv_id: int) -> Payment:
+        payment = await payment_repo.find_by_reserv_id(reserv_id)
+        if not payment:
+            raise PaymentNotFoundException
+
         return payment
-
-    async def record_attempt(self, method: str, amount: Decimal) -> Payment:
-        # 실패한 결제 시도를 FAILED 상태로 저장한다. 예매와 연결하지 않는다(reserv_id=None).
-        payment = Payment(
-            pay_id=None,
-            method=method,
-            amount=amount,
-            status=PaymentStatus.FAILED,
-        )
-        await self.repository.save(payment)
-        return payment
-    
-    async def mark_paid(
-            self, pay_id: int, reserv_id:int, paid_at: datetime | None = None,
-    ) -> Payment:
-        # 예매 번호는 이 클래스가 만들지 않고, 호출자가 넘긴 값을 붙인다.
-        payment = await self._change(pay_id, lambda item: item.mark_as_paid(reserv_id,paid_at))
-        return payment
-
-    async def mark_failed(self, pay_id: int) -> Payment:
-        return await self._change(pay_id, lambda item: item.mark_as_failed())
-
-    async def mark_refunded(
-            self, pay_id: int, refunded_at: datetime | None = None,) -> Payment:
-        return await self._change(pay_id, lambda item: item.mark_as_refunded(refunded_at))
-
-    async def _change(self,pay_id: int, change) -> Payment:
-        payment = await self.get_payment(pay_id)
-        try:
-            change(payment)
-        except ValueError as exc:
-            # 도메인 규칙 위반은 현재 상태와 요청이 충돌한 것으로 올린다.
-            raise ConflictException(str(exc), error_code="PAYMENT_STATE_CONFLICT") from exc
-        await self.repository.save(payment)
-        return payment
-        

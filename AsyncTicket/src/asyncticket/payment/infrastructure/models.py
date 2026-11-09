@@ -1,8 +1,10 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 from asyncticket.shared.core.models import Base
+from sqlalchemy.dialects.postgresql import JSONB
+from typing import Dict, Any
 
 
 # 결제 테이블
@@ -37,3 +39,6 @@ class Payment(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 환불 상태로 바뀐 시각 (인프라 기록)
     refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # 결제 로그
+    payment_log: Mapped[Dict[str, Any]] = mapped_column(JSONB, server_default="{}",default=dict)
