@@ -14,7 +14,7 @@ from asyncticket.shared.core.database import close_db, engine
 from asyncticket.shared.core.exception_handlers import register_exception_handlers
 # 공용 로거 생성 함수
 from asyncticket.shared.core.logger import get_logger
-from asyncticket.shared.core.middlewares import register_middlewares
+from asyncticket.shared.core.middlewares import CorsFastAPI
 # Base : 모든 모델의 부모, 등록된 테이블 정보(metadata)를 가짐
 # init_models : 모든 도메인 models.py를 import해서 Base에 테이블 등록
 from asyncticket.shared.core.models import Base, init_models
@@ -63,7 +63,7 @@ def create_app(
     policy: CatalogPolicy | None = None,
 ) -> FastAPI:
     """공용 수명주기와 공연·회차 API의 설정·라우터를 한 앱에 조립한다."""
-    app = FastAPI(
+    app = CorsFastAPI(
         title="AsyncTicket API",
         description="공연 티켓 예매 백엔드 API",
         version="1.0.0",
@@ -90,7 +90,6 @@ def create_app(
     app.include_router(seat_router)
     # 결제 관련 라우터
     app.include_router(payment_router)
-    register_middlewares(app)
     return app
 
 
