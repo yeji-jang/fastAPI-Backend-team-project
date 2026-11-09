@@ -1,7 +1,10 @@
 """
 예매 요청·응답 모델 (Pydantic)
-    - 요청 : 클라이언트가 보내는 값만 받는다 (예매자 ID는 받지 않고 로그인 정보에서 가져온다)
-    - 응답 : 예매 엔티티를 API로 내보낼 모양으로 바꾼다
+    1) 요청 스키마 : 
+        - 클라이언트가 보내는 값을 받아 모양을 검사
+        - 예매자 ID는 받지 않고 로그인 정보에서 가져온다
+    2) 응답 스키마 : 
+        - 예매 엔티티를 API로 내보낼 모양으로 바꾼다
 """
 
 from datetime import datetime
@@ -39,7 +42,9 @@ class ReservationResponse(BaseModel):
 
     @classmethod
     def from_entity(cls, reservation: Reservation) -> "ReservationResponse":
-        """예매 엔티티(VO 포함) → 응답 모델 (VO 안의 값을 꺼내 평평하게 만든다)"""
+        """
+        예매 엔티티(VO 포함) → 응답 모델 (VO 안의 값을 꺼내 평평하게 만든다)
+        """
         return cls(
             reserv_id=reservation.reserv_id,
             order_number=reservation.order_number,
