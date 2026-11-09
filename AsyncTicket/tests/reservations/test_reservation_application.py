@@ -20,11 +20,13 @@ from decimal import Decimal
 from asyncticket.reservations.application.service import ReservationService
 from asyncticket.reservations.domain.enums import ReservationStatus
 from asyncticket.reservations.domain.reservation import (
-    Reservation, TicketHolder, ReservedPerformance, ReservedSeat, ReservedPayment,
+    Reservation, TicketHolder, ReservedPerformance, ReservedSeat, ReservedPayment, ReservationError,
 )
 from asyncticket.reservations.infrastructure.adapter_seat_allocation import SeatAllocationAdapter
+
+from asyncticket.reservations.presentation.exception_handlers import to_shared_exception
+
 from asyncticket.seats.domain.enums import SeatStatus
-from asyncticket.shared.core.exceptions import SharedException
 
 UTC = timezone.utc
 OPENS_AT = datetime(2026, 11, 1, tzinfo=UTC)
@@ -143,9 +145,9 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
         return await self.repository.reserv_add(reservation)
 
     def assert_error(self, error, status_code, error_code):
-        """팀 공통 예외의 HTTP 상태 코드와 error_code 확인"""
-        self.assertEqual(error.exception.status_code, status_code)
+        """예매 도메인 예외의 error_code와, 표현 계층에서 바뀌는 HTTP 상태 코드 확인"""
         self.assertEqual(error.exception.error_code, error_code)
+        self.assertEqual(to_shared_exception(error.exception).status_code, status_code)
 
     # =========================================================
     # 2. 예매하기 (reserve)
@@ -172,7 +174,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_이미_예매한_회차면_409(self):
         self.checker.possible = False
 
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.reserve(ticketholder_id=OWNER_ID, perf_id=PERF_ID, perf_seat_id=PERF_SEAT_ID, now=NOW)
 
         self.assert_error(error, 409, "RESERVATION_ALREADY_EXISTS")
@@ -180,14 +182,14 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.seat_allocation.held, [])      # 좌석 안 잡음
 
     async def test_없는_회차면_404(self):
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.reserve(ticketholder_id=OWNER_ID, perf_id=999, perf_seat_id=PERF_SEAT_ID, now=NOW)
 
         self.assert_error(error, 404, "PERFORMANCE_NOT_FOUND")
         self.assertEqual(self.seat_allocation.held, [])
 
     async def test_없는_좌석이면_404(self):
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.reserve(ticketholder_id=OWNER_ID, perf_id=PERF_ID, perf_seat_id=999, now=NOW)
 
         self.assert_error(error, 404, "SEAT_NOT_FOUND")
@@ -195,7 +197,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_예매_기간이_아니면_409(self):
         # 도메인 예외(ReservationConflictError) → 팀 공통 예외(409)로 바뀌는지 확인
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.reserve(ticketholder_id=OWNER_ID, perf_id=PERF_ID, perf_seat_id=PERF_SEAT_ID, now=CLOSES_AT)
 
         self.assert_error(error, 409, "RESERVATION_NOT_OPEN")
@@ -217,7 +219,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.repository.status_updates, 1)          # 상태 저장 호출
 
     async def test_없는_예매를_확정하면_404(self):
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.confirm(reserv_id=999, pay_id=30, now=NOW)
 
         self.assert_error(error, 404, "RESERVATION_NOT_FOUND")
@@ -225,7 +227,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_이미_확정된_예매를_다시_확정하면_409(self):
         await self.store(status=ReservationStatus.CONFIRMED)
 
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.confirm(reserv_id=1, pay_id=31, now=NOW)
 
         self.assert_error(error, 409, "RESERVATION_NOT_PENDING")
@@ -250,7 +252,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_다른_회원이_취소하면_403(self):
         await self.store(status=ReservationStatus.CONFIRMED)
 
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.cancel(reserv_id=1, ticketholder_id=OTHER_ID, now=NOW)
 
         self.assert_error(error, 403, "RESERVATION_FORBIDDEN")
@@ -260,7 +262,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_예매대기_상태는_취소하면_409(self):
         await self.store(status=ReservationStatus.PENDING)
 
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.cancel(reserv_id=1, ticketholder_id=OWNER_ID, now=NOW)
 
         self.assert_error(error, 409, "RESERVATION_NOT_CANCELABLE")
@@ -269,7 +271,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_공연_시작_후_취소하면_409(self):
         await self.store(status=ReservationStatus.CONFIRMED)
 
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.cancel(reserv_id=1, ticketholder_id=OWNER_ID, now=STARTS_AT)
 
         self.assert_error(error, 409, "PERFORMANCE_ALREADY_STARTED")
@@ -297,13 +299,13 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_다른_회원의_예매를_조회하면_403(self):
         await self.store()
 
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.get_reservation(reserv_id=1, ticketholder_id=OTHER_ID)
 
         self.assert_error(error, 403, "RESERVATION_FORBIDDEN")
 
     async def test_없는_예매를_조회하면_404(self):
-        with self.assertRaises(SharedException) as error:
+        with self.assertRaises(ReservationError) as error:
             await self.service.get_reservation(reserv_id=999, ticketholder_id=OWNER_ID)
 
         self.assert_error(error, 404, "RESERVATION_NOT_FOUND")
