@@ -63,40 +63,59 @@ class ReservationTests(unittest.TestCase):
         self.seat = ReservedSeat(reserved_seat_id=100, reserved_seat_price=Decimal("150000"))
         self.payment = ReservedPayment(reserved_pay_id=1000)
 
-    def make_reservation(self, now=NOW, seat_price=Decimal("150000")):
+    def make_reservation(self, now=NOW, seat_price=Decimal("150000"), has_active_reservation=False):
         """
-        테스트용 예매를 만드는 도우미 (test_로 시작하지 않으므로 테스트가 아님)
+        테스트용 예매대기(PENDING) 예매를 만드는 도우미
         - 아무것도 안 넘기면 : 11/5에 15만원 좌석을 예매
         - now, seat_price만 바꿔서 여러 상황을 만든다
         """
-        return Reservation.confirm_new(
+        return Reservation.create_pending(
             ticketholder=self.ticketholder,
             performance=self.performance,
             seat=ReservedSeat(reserved_seat_id=100, reserved_seat_price=seat_price),
-            payment=self.payment,
-            order_number="ORD-001",
+            has_active_reservation=has_active_reservation,
             now=now,
         )
+
+    def make_confirmed_reservation(self):
+        """테스트용 예매확정(CONFIRMED) 예매를 만드는 도우미 (예매대기 → 결제 성공 → 확정)"""
+        reservation = self.make_reservation()
+        reservation.confirm(self.payment, NOW)
+        return reservation
 
     # =========================================================
     # 1. 예매 생성
     # =========================================================
-    def test_새_예매는_확정상태이고_금액은_좌석가격이다(self):
+    def test_주문번호는_ORD로_시작하고_예매마다_다르다(self):
+        first = self.make_reservation()
+        second = self.make_reservation()
+
+        self.assertTrue(first.order_number.startswith("ORD-"))
+        self.assertNotEqual(first.order_number, second.order_number)
+
+    def test_이미_진행중인_예매가_있으면_예매할_수_없다(self):
+        with self.assertRaises(ReservationConflictError) as error : 
+            self.make_reservation(has_active_reservation=True)
+
+        self.assertEqual(error.exception.error_code, "RESERVATION_ALREADY_EXISTS")
+
+    def test_새_예매는_대기상태이고_금액은_좌석가격이다(self):
         # 실행
         reservation = self.make_reservation()
 
         # 확인
-        self.assertEqual(reservation.status, ReservationStatus.CONFIRMED)   # 바로 확정
+        self.assertEqual(reservation.status, ReservationStatus.PENDING)     # 결제 전이라 예매대기
         self.assertEqual(reservation.total_amount, Decimal("150000"))        # 금액 = 좌석 가격
         self.assertEqual(reservation.quantity, 1)                            # 1건 = 1좌석
-        self.assertEqual(reservation.confirmed_at, NOW)                      # 확정 일시 기록
+        self.assertIsNone(reservation.payment)                               # 결제 정보 없음
+        self.assertIsNone(reservation.confirmed_at)                          # 아직 확정 안 됨
         self.assertIsNone(reservation.reserv_id)                             # 아직 DB 저장 전
         self.assertIsNone(reservation.canceled_at)                           # 취소 안 됨
 
     def test_예매_오픈_시각_정각에는_예매된다(self):
         reservation = self.make_reservation(now=OPENS_AT)
 
-        self.assertEqual(reservation.status, ReservationStatus.CONFIRMED)
+        self.assertEqual(reservation.status, ReservationStatus.PENDING)
 
     def test_예매_오픈_전에는_예매할_수_없다(self):
         # 오픈 1초 전에 예매 시도 -> 예외가 나야 통과
@@ -125,36 +144,89 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual(error.exception.error_code, "INVALID_TOTAL_AMOUNT")
 
     def test_좌석_2개는_예매할_수_없다(self):
-        # confirm_new은 수량을 받지 않으므로, 엔티티를 직접 만들어서 확인
+        # create_pending은 수량을 받지 않으므로, 엔티티를 직접 만들어서 확인
         with self.assertRaises(ReservationValidationError) as error:
             Reservation(
                 ticketholder=self.ticketholder,
                 performance=self.performance,
                 seat=self.seat,
-                payment=self.payment,
                 order_number="ORD-001",
                 total_amount=Decimal("150000"),
-                status=ReservationStatus.CONFIRMED,
+                status=ReservationStatus.PENDING,
                 quantity=2,
             )
 
         self.assertEqual(error.exception.error_code, "INVALID_QUANTITY")
+
 
     # =========================================================
     # 2. 본인 확인
     # =========================================================
     def test_본인_예매인지_확인한다(self):
         reservation = self.make_reservation()
-
+        
         self.assertTrue(reservation.is_owned(OWNER_ID))     # 본인 -> True
         self.assertFalse(reservation.is_owned(OTHER_ID))    # 타인 -> False
 
+    def test_본인은_예매를_조회할_수_있다(self) :
+        reservation = self.make_reservation()
+
+        reservation.check_viewable(OWNER_ID)  # 예외가 나지 않으면 통과
+
+    def test_다른_회원은_예매를_조회할_수_없다(self):
+        reservation = self.make_reservation()
+
+        with self.assertRaises(ReservationForbiddenError) as error :
+            reservation.check_viewable(OTHER_ID)
+
+        self.assertEqual(error.exception.error_code, "RESERVATION_FORBIDDEN")
+
     # =========================================================
-    # 3. 예매 취소
+    # 3. 예매 확정 (결제 성공 후)
+    # =========================================================
+    def test_결제_성공하면_예매가_확정된다(self):
+        # 준비
+        reservation = self.make_reservation()
+        confirm_time = NOW + ONE_SECOND
+
+        # 실행
+        reservation.confirm(self.payment, confirm_time)
+
+        # 확인
+        self.assertEqual(reservation.status, ReservationStatus.CONFIRMED)   # 확정 상태로 바뀜
+        self.assertEqual(reservation.payment, self.payment)                 # 결제 정보 기록
+        self.assertEqual(reservation.confirmed_at, confirm_time)            # 확정 일시 기록
+
+    def test_이미_확정된_예매는_다시_확정할_수_없다(self):
+        # 준비 : 한 번 확정해 둔다
+        reservation = self.make_confirmed_reservation()
+
+        # 실행 : 다른 결제로 한 번 더 확정
+        with self.assertRaises(ReservationConflictError) as error:
+            reservation.confirm(ReservedPayment(reserved_pay_id=2000), NOW + ONE_DAY)
+
+        # 확인 : 오류가 나고, 처음 결제·확정 일시가 그대로
+        self.assertEqual(error.exception.error_code, "RESERVATION_NOT_PENDING")
+        self.assertEqual(reservation.payment, self.payment)
+        self.assertEqual(reservation.confirmed_at, NOW)
+
+    def test_예매대기_상태는_취소할_수_없다(self):
+        # 결제 전(PENDING) 예매는 취소가 아니라 확정만 가능
+        reservation = self.make_reservation()
+
+        with self.assertRaises(ReservationConflictError) as error:
+            reservation.cancel(OWNER_ID, NOW)
+
+        self.assertEqual(error.exception.error_code, "RESERVATION_NOT_CANCELABLE")
+        self.assertEqual(reservation.status, ReservationStatus.PENDING)
+
+
+    # =========================================================
+    # 4. 예매 취소
     # =========================================================
     def test_본인은_공연_전에_취소할_수_있다(self):
         # 준비
-        reservation = self.make_reservation()
+        reservation = self.make_confirmed_reservation()
         cancel_time = NOW + ONE_DAY
 
         # 실행
@@ -165,14 +237,14 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual(reservation.canceled_at, cancel_time)             # 취소 일시 기록
 
     def test_공연_시작_1초_전에는_취소할_수_있다(self):
-        reservation = self.make_reservation()
+        reservation = self.make_confirmed_reservation()
 
         reservation.cancel(OWNER_ID, STARTS_AT - ONE_SECOND)
 
         self.assertEqual(reservation.status, ReservationStatus.CANCELED)
 
     def test_다른_회원은_취소할_수_없다(self):
-        reservation = self.make_reservation()
+        reservation = self.make_confirmed_reservation()
 
         with self.assertRaises(ReservationForbiddenError) as error:
             reservation.cancel(OTHER_ID, NOW)
@@ -184,7 +256,7 @@ class ReservationTests(unittest.TestCase):
 
     def test_이미_취소한_예매는_다시_취소할_수_없다(self):
         # 준비 : 한 번 취소해 둔다
-        reservation = self.make_reservation()
+        reservation = self.make_confirmed_reservation()
         first_cancel_time = NOW + ONE_DAY
         reservation.cancel(OWNER_ID, first_cancel_time)
 
@@ -197,7 +269,7 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual(reservation.canceled_at, first_cancel_time)
 
     def test_공연_시작_시각_정각부터는_취소할_수_없다(self):
-        reservation = self.make_reservation()
+        reservation = self.make_confirmed_reservation()
 
         with self.assertRaises(ReservationConflictError) as error:
             reservation.cancel(OWNER_ID, STARTS_AT)
@@ -206,7 +278,7 @@ class ReservationTests(unittest.TestCase):
         self.assertEqual(reservation.status, ReservationStatus.CONFIRMED)
 
     # =========================================================
-    # 4. VO는 바뀌지 않는다 (frozen=True)
+    # 5. VO는 바뀌지 않는다 (frozen=True)
     # =========================================================
     def test_VO_값은_직접_바꿀_수_없다(self):
         reservation = self.make_reservation()

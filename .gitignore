@@ -26,3 +26,24 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Personal seat-domain notes (keep shared README files trackable)
+[Ss][Ee][Aa][Tt]_[Dd][Oo][Mm][Aa][Ii][Nn]*.[Mm][Dd]
+[Ss][Ee][Aa][Tt]-[Dd][Oo][Mm][Aa][Ii][Nn]*.[Mm][Dd]
+
+# Local command / shell history
+.zsh_history
+.bash_history
+.python_history
+.history
+.zsh_sessions/
+*command_history*
+*COMMAND_HISTORY*
+*command-history*
+*COMMAND-HISTORY*
+*명령기록*
+*명령_기록*
+
+# Local AI assistant session history
+.codex/
+.claude/

@@ -181,7 +181,8 @@ PostgreSQL DDL 컴파일 검사는 실제 DB 적용·동시성·부하 검증이
 
 ## 팀 통합 시 남은 사항
 
-- dev에 공통 인증 구현이 아직 없어 인증 어댑터 연결이 필요하다.
+- 공통 JWT 인증 연결은 `wiring/catalog_auth.py`에 적용돼 있다. 기존 DB의 PK·NULL 제약은
+  [기존 스키마 정합성 안내](existing-schema-alignment.md)에 따라 별도로 확인한다.
 - 팀 공용 앱의 좌석 라우터·wiring 연결과 좌석 생성 완료 확인은 별도 통합 작업이다.
 - 공연장 관계 수정과 공통 응답·예외 적용은 PR #33·#34로 팀 dev에 반영됐다.
   기존 잘못된 관계 제거와 함께 적용한 소스에서 9모델 ORM 초기화·PostgreSQL DDL 컴파일을

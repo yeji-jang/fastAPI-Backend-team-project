@@ -29,6 +29,11 @@ from asyncticket.shared.infrastructure.catalog import SqlAlchemyCatalogRelations
 
 UTC = timezone.utc
 T0 = datetime(2026, 11, 3, tzinfo=UTC)
+# Seat and reservation APIs may share these URL prefixes in the integrated app.
+CATALOG_PATHS = frozenset({
+    "/v1/shows", "/v1/shows/{show_id}",
+    "/v1/shows/{show_id}/performances", "/v1/performances/{perf_id}",
+})
 
 
 class AsyncSessionAdapter:
@@ -339,13 +344,17 @@ class CatalogApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_openapi_matches_all_ten_operations(self) -> None:
         # Other domains may register routes on the same shared app.
         self.app.add_api_route("/v1/other-domain", lambda: {"items": []}, methods=["GET"])
+        # A nested foreign-domain route need not use the catalog response DTO.
+        nested_path = "/v1/performances/{perf_id}/other-domain"
+        self.app.add_api_route(nested_path, lambda perf_id: {"items": []}, methods=["GET"])
         status, body = await asgi_get(self.app, "/openapi.json")
         self.assertEqual(status, 200)
         catalog_paths = {
             path: operations for path, operations in body["paths"].items()
-            if path.startswith(("/v1/shows", "/v1/performances"))
+            if path in CATALOG_PATHS
         }
         self.assertIn("/v1/other-domain", body["paths"])
+        self.assertIn(nested_path, body["paths"])
         self.assertEqual(set(catalog_paths), {
             "/v1/shows", "/v1/shows/{show_id}",
             "/v1/shows/{show_id}/performances", "/v1/performances/{perf_id}",
@@ -464,7 +473,9 @@ class CatalogApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_common_authentication_module_never_grants_access(self) -> None:
         app = create_app()
-        status, _, result = await catalog_request(app, "POST", "/v1/shows", self.show_body(), "anything")
+        # This case must remain deterministic when a developer has configured JWT.
+        with patch.dict("os.environ", {"JWT_SECRET_KEY": ""}):
+            status, _, result = await catalog_request(app, "POST", "/v1/shows", self.show_body(), "anything")
         self.assertEqual(status, 503)
         self.assertEqual(result["code"], "INTEGRATION_UNAVAILABLE")
 
@@ -709,7 +720,12 @@ class CatalogApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_openapi_declares_common_success_errors_and_bodyless_deletes(self) -> None:
         self.app.add_api_route("/v1/other-domain", lambda: {"items": []}, methods=["GET"])
+        # A nested foreign-domain route need not use the catalog response DTO.
+        nested_path = "/v1/performances/{perf_id}/other-domain"
+        self.app.add_api_route(nested_path, lambda perf_id: {"items": []}, methods=["GET"])
         _, schema = await asgi_get(self.app, "/openapi.json")
+        self.assertIn(nested_path, schema["paths"])
+        self.assertTrue(CATALOG_PATHS <= schema["paths"].keys())
         components = schema["components"]["schemas"]
         data_types = {
             ("/v1/shows", "get"): "ShowListResponse",
@@ -722,7 +738,7 @@ class CatalogApiTests(unittest.IsolatedAsyncioTestCase):
             ("/v1/performances/{perf_id}", "patch"): "PerformanceResponse",
         }
         for path, operations in schema["paths"].items():
-            if not path.startswith(("/v1/shows", "/v1/performances")):
+            if path not in CATALOG_PATHS:
                 continue
             for method, operation in operations.items():
                 responses = operation["responses"]

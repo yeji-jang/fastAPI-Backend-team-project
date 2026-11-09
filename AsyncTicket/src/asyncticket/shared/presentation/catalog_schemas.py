@@ -4,7 +4,7 @@ import re
 from datetime import date
 from typing import Annotated, Self
 
-from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, model_validator
+from pydantic import AwareDatetime, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 
 def require_date_text(value: object) -> str:
@@ -24,7 +24,7 @@ IsoDatetime = Annotated[AwareDatetime, BeforeValidator(require_datetime_text)]
 
 
 class PatchRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", title="부분 수정 요청")
 
     @model_validator(mode="after")
     def validate_patch(self) -> Self:
@@ -35,3 +35,14 @@ class PatchRequest(BaseModel):
             if getattr(self, name) is None:
                 raise ValueError(f"{name}에는 null을 지정할 수 없습니다.")
         return self
+
+
+class ErrorDetail(BaseModel):
+    model_config = ConfigDict(title="오류 상세 정보")
+    code: str = Field(title="오류 코드", description="오류를 구분하는 코드")
+    message: str = Field(title="오류 안내", description="사용자에게 표시할 오류 메시지")
+
+
+class ErrorResponse(BaseModel):
+    model_config = ConfigDict(title="오류 응답")
+    detail: ErrorDetail = Field(title="상세 오류", description="오류 코드와 안내 메시지")

@@ -61,8 +61,7 @@ class ReservationModel(Base):
     # Optianal 기능(| 파이프라인)
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
-        nullable=True,
-        onupdate=datetime.now(timezone.utc))
+        nullable=True)
 
     canceled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

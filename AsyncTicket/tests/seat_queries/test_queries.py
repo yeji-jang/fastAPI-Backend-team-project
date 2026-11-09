@@ -13,12 +13,14 @@ from sqlalchemy import BigInteger, Column, MetaData, Table, insert, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from asyncticket.wiring.performance_seats import wire_dependencies
-from asyncticket.performance_seats.infrastructure.models import PerformanceSeats
+from asyncticket.seats.infrastructure.models import PerformanceSeats
 from asyncticket.seats.infrastructure.models import SeatsInfoModel
-from asyncticket.performance_seats.infrastructure.repositories import SqlAlchemyPerformanceSeatRepository
+from asyncticket.seats.infrastructure.repositories import (
+    SqlAlchemyPerformanceSeatRepository,
+)
 from asyncticket.seats.infrastructure.repositories import SqlAlchemySeatInfoRepository
 from fastapi import FastAPI
-from asyncticket.performance_seats.presentation.router import router as seat_router
+from asyncticket.seats.presentation.router import router as seat_router
 from asyncticket.shared.core.exception_handlers import register_exception_handlers
 
 
@@ -29,11 +31,13 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
 
         metadata = MetaData()
         performances = Table(
-            "performances", metadata,
+            "performances",
+            metadata,
             Column("perf_id", BigInteger, primary_key=True),
         )
         reservations = Table(
-            "reservations", metadata,
+            "reservations",
+            metadata,
             Column("reserv_id", BigInteger, primary_key=True),
             Column("perf_id", BigInteger, nullable=False),
         )
@@ -43,20 +47,70 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
         async with self.engine.begin() as conn:
             await conn.execute(text("PRAGMA foreign_keys = ON"))
             await conn.run_sync(metadata.create_all)
-            await conn.execute(insert(performances), [
-                {"perf_id": 10}, {"perf_id": 20}, {"perf_id": 30},
-            ])
-            await conn.execute(insert(reservations), [{"reserv_id": 1, "perf_id": 10}, {"reserv_id": 2, "perf_id": 20}])
-            await conn.execute(insert(seat_infos), [
-                {"seat_id": 101, "perf_id": 10, "name": "R석", "total_seat": 30, "price": 55000},
-                {"seat_id": 102, "perf_id": 20, "name": "S석", "total_seat": 20, "price": 30000},
-                {"seat_id": 103, "perf_id": 10, "name": None, "total_seat": None, "price": None},
-            ])
-            await conn.execute(insert(seats), [
-                {"perf_seat_id": 1001, "reserv_id": 1, "seat_id2": 101, "status": "RESERVED", "seat_seq": "A01"},
-                {"perf_seat_id": 1002, "reserv_id": 1, "seat_id2": 102, "status": "CUSTOM_STATUS", "seat_seq": "A01"},
-                {"perf_seat_id": 1003, "reserv_id": 1, "seat_id2": 103, "status": "UNCONFIGURED", "seat_seq": None},
-            ])
+            await conn.execute(
+                insert(performances),
+                [
+                    {"perf_id": 10},
+                    {"perf_id": 20},
+                    {"perf_id": 30},
+                ],
+            )
+            await conn.execute(
+                insert(reservations),
+                [{"reserv_id": 1, "perf_id": 10}, {"reserv_id": 2, "perf_id": 20}],
+            )
+            await conn.execute(
+                insert(seat_infos),
+                [
+                    {
+                        "seat_id": 101,
+                        "perf_id": 10,
+                        "name": "R석",
+                        "total_seat": 30,
+                        "price": 55000,
+                    },
+                    {
+                        "seat_id": 102,
+                        "perf_id": 20,
+                        "name": "S석",
+                        "total_seat": 20,
+                        "price": 30000,
+                    },
+                    {
+                        "seat_id": 103,
+                        "perf_id": 10,
+                        "name": None,
+                        "total_seat": None,
+                        "price": None,
+                    },
+                ],
+            )
+            await conn.execute(
+                insert(seats),
+                [
+                    {
+                        "perf_seat_id": 1001,
+                        "reserv_id": 1,
+                        "seat_id2": 101,
+                        "status": "RESERVED",
+                        "seat_seq": "A01",
+                    },
+                    {
+                        "perf_seat_id": 1002,
+                        "reserv_id": 1,
+                        "seat_id2": 102,
+                        "status": "RESERVED",
+                        "seat_seq": "A01",
+                    },
+                    {
+                        "perf_seat_id": 1003,
+                        "reserv_id": 1,
+                        "seat_id2": 103,
+                        "status": "RESERVED",
+                        "seat_seq": None,
+                    },
+                ],
+            )
 
         async def get_test_db():
             async with self.sessions() as session:
@@ -68,7 +122,8 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
         self.app.include_router(seat_router)
         wire_dependencies(self.app, db_dependency=get_test_db)
         self.client = AsyncClient(
-            transport=ASGITransport(app=self.app, raise_app_exceptions=False), base_url="http://test"
+            transport=ASGITransport(app=self.app, raise_app_exceptions=False),
+            base_url="http://test",
         )
 
     async def asyncTearDown(self):
@@ -76,20 +131,40 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     async def test_unbooked_seat_can_be_linked_without_committing(self):
-        from asyncticket.performance_seats.application.service import PerformanceSeatService, SeatReservationConflictError
+        from asyncticket.seats.application.service import (
+            PerformanceSeatService,
+            SeatReservationConflictError,
+        )
 
         async with self.sessions() as session:
-            await session.execute(insert(PerformanceSeats).values(
-                perf_seat_id=2001, reserv_id=None, seat_id2=101,
-                status="TEST_AVAILABLE", seat_seq="B01",
-            ))
+            await session.execute(
+                insert(PerformanceSeats).values(
+                    perf_seat_id=2001,
+                    reserv_id=None,
+                    seat_id2=101,
+                    status="TEST_AVAILABLE",
+                    seat_seq="B01",
+                )
+            )
             await session.commit()
-            service = PerformanceSeatService(SqlAlchemyPerformanceSeatRepository(session))
-            args = dict(perf_id=10, perf_seat_id=2001, reserv_id=1,
-                        expected_status="TEST_AVAILABLE", reserved_status="TEST_RESERVED")
+            service = PerformanceSeatService(
+                SqlAlchemyPerformanceSeatRepository(session),
+                SqlAlchemySeatInfoRepository(session),
+            )
+            args = dict(
+                perf_id=10,
+                perf_seat_id=2001,
+                reserv_id=1,
+                expected_status="TEST_AVAILABLE",
+                reserved_status="TEST_RESERVED",
+            )
             # 다른 회차의 예매나 잘못된 상태로는 연결할 수 없다.
-            for override in ({"reserv_id": 2}, {"reserv_id": 999},
-                             {"perf_id": 20}, {"expected_status": "WRONG"}):
+            for override in (
+                {"reserv_id": 2},
+                {"reserv_id": 999},
+                {"perf_id": 20},
+                {"expected_status": "WRONG"},
+            ):
                 with self.assertRaises(SeatReservationConflictError):
                     await service.assign_reservation(**(args | override))
             await service.assign_reservation(**args)
@@ -102,22 +177,37 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
         async with self.sessions() as session:
             seat = await session.get(PerformanceSeats, 2001)
             self.assertEqual((seat.reserv_id, seat.status), (None, "TEST_AVAILABLE"))
-            await PerformanceSeatService(SqlAlchemyPerformanceSeatRepository(session)).assign_reservation(**args)
+            await PerformanceSeatService(
+                SqlAlchemyPerformanceSeatRepository(session),
+                SqlAlchemySeatInfoRepository(session),
+            ).assign_reservation(**args)
             await session.commit()
         async with self.sessions() as session:
             seat = await session.get(PerformanceSeats, 2001)
             self.assertEqual((seat.reserv_id, seat.status), (1, "TEST_RESERVED"))
 
     async def test_invalid_reservation_link_uses_common_validation_exception(self):
-        from asyncticket.performance_seats.application.service import PerformanceSeatService
+        from asyncticket.seats.application.service import PerformanceSeatService
         from asyncticket.shared.core.exceptions import ValidationException
+
         async with self.sessions() as session:
-            service = PerformanceSeatService(SqlAlchemyPerformanceSeatRepository(session))
-            args = dict(perf_id=10, perf_seat_id=1001, reserv_id=1,
-                        expected_status="TEST_AVAILABLE", reserved_status="TEST_RESERVED")
+            service = PerformanceSeatService(
+                SqlAlchemyPerformanceSeatRepository(session),
+                SqlAlchemySeatInfoRepository(session),
+            )
+            args = dict(
+                perf_id=10,
+                perf_seat_id=1001,
+                reserv_id=1,
+                expected_status="TEST_AVAILABLE",
+                reserved_status="TEST_RESERVED",
+            )
             for override, code in (
                 ({"reserv_id": 0}, "INVALID_SEAT_RESERVATION_ID"),
-                ({"reserved_status": "TEST_AVAILABLE"}, "INVALID_SEAT_STATUS_TRANSITION"),
+                (
+                    {"reserved_status": "TEST_AVAILABLE"},
+                    "INVALID_SEAT_STATUS_TRANSITION",
+                ),
             ):
                 with self.subTest(override=override):
                     with self.assertRaises(ValidationException) as raised:
@@ -144,7 +234,7 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_performance_returns_404(self):
         response = await self.client.get("/v1/performances/999/seats")
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json()["message"], "공연 회차가 없습니다.")
+        self.assertEqual(response.json()["message"], "공연 회차를 찾을 수 없습니다.")
 
     async def test_detail_uses_both_performance_and_seat_sequence(self):
         first = await self.client.get("/v1/performances/10/seats/A01")
@@ -153,14 +243,39 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(first.json()["data"]["perf_seat_id"], 1001)
         self.assertEqual(second.json()["data"]["perf_seat_id"], 1002)
-        self.assertEqual(second.json()["data"]["status"], "CUSTOM_STATUS")
+        self.assertEqual(second.json()["data"]["status"], "RESERVED")
+
+    async def test_detail_supports_slash_in_seat_sequence(self):
+        async with self.sessions() as session:
+            await session.execute(
+                insert(PerformanceSeats).values(
+                    perf_seat_id=9001,
+                    seat_id2=101,
+                    seat_seq="A/01",
+                    status="AVAILABLE",
+                    reserv_id=None,
+                )
+            )
+            await session.commit()
+
+        for seat_path in ("A/01", "A%2F01"):
+            with self.subTest(seat_path=seat_path):
+                response = await self.client.get(
+                    f"/v1/performances/10/seats/{seat_path}"
+                )
+                self.assertEqual(response.status_code, 200)
+                data = response.json()["data"]
+                self.assertEqual(data["perf_seat_id"], 9001)
+                self.assertEqual(data["seat_seq"], "A/01")
 
     async def test_missing_seat_in_existing_performance_returns_404(self):
         for path in ("/v1/performances/10/seats/Z99", "/v1/performances/30/seats/A01"):
             with self.subTest(path=path):
                 response = await self.client.get(path)
                 self.assertEqual(response.status_code, 404)
-                self.assertEqual(response.json()["message"], "해당 회차에 좌석이 없습니다.")
+                self.assertEqual(
+                    response.json()["message"], "해당 회차의 좌석을 찾을 수 없습니다."
+                )
 
     async def test_invalid_performance_id_returns_422(self):
         for value in ("0", "-1", "wrong"):
@@ -174,14 +289,19 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(item["grade"])
         self.assertIsNone(item["price"])
         self.assertIsNone(item["seat_seq"])
-        self.assertEqual(item["status"], "UNCONFIGURED")
+        self.assertEqual(item["status"], "RESERVED")
 
     async def test_duplicate_seat_sequence_is_not_arbitrarily_selected(self):
         async with self.sessions() as session:
-            await session.execute(insert(PerformanceSeats).values(
-                perf_seat_id=1004, reserv_id=1, seat_id2=101,
-                status="CUSTOM_STATUS", seat_seq="A01",
-            ))
+            await session.execute(
+                insert(PerformanceSeats).values(
+                    perf_seat_id=1004,
+                    reserv_id=1,
+                    seat_id2=101,
+                    status="RESERVED",
+                    seat_seq="A01",
+                )
+            )
             await session.commit()
         response = await self.client.get("/v1/performances/10/seats/A01")
         self.assertEqual(response.status_code, 500)
@@ -201,14 +321,23 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
             grade = await repository.get_seat_info(101)
             self.assertEqual(grade.name, "R석")
             self.assertIsNone(await repository.get_seat_info(999))
-            grades = await repository.list_seat_infos(10)
-            self.assertEqual([item.seat_id for item in grades], [101, 103])
+            # 미설정 DB 행은 조회용 값으로 보존하되 도메인 객체로 만들지 않는다.
+            self.assertIsNone(await repository.get_seat_info_view(20, 101))
+            view = await repository.get_seat_info_view(10, 103)
+            self.assertIsNone(view["name"])
+            with self.assertRaises(ValueError):
+                await repository.get_seat_info(103)
 
     async def test_openapi_declares_common_success_and_failure_shapes(self):
         spec = self.app.openapi()
-        responses = spec["paths"]["/v1/performances/{perf_id}/seats"]["get"]["responses"]
+        responses = spec["paths"]["/v1/performances/{perf_id}/seats"]["get"][
+            "responses"
+        ]
         for code in ("200", "404", "422", "500"):
-            self.assertIn("APIResponse", responses[code]["content"]["application/json"]["schema"]["$ref"])
+            self.assertIn(
+                "APIResponse",
+                responses[code]["content"]["application/json"]["schema"]["$ref"],
+            )
 
     async def test_success_and_failures_have_common_envelope(self):
         for path, status, code in (
@@ -221,7 +350,10 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
                 response = await self.client.get(path)
                 self.assertEqual(response.status_code, status)
                 body = response.json()
-                self.assertEqual(set(body), {"success", "code", "message", "errors", "data", "responded_at"})
+                self.assertEqual(
+                    set(body),
+                    {"success", "code", "message", "errors", "data", "responded_at"},
+                )
                 self.assertEqual(body["success"], status == 200)
                 self.assertEqual(body["code"], code)
                 if status != 200:
@@ -232,7 +364,7 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
     async def test_grade_wiring_uses_its_own_repository(self):
         from fastapi import Depends
         from asyncticket.seats.application.service import SeatInfoService
-        from asyncticket.seats.presentation.dependencies import provide_seat_info_service
+        from asyncticket.wiring.seats import provide_seat_info_service
         from asyncticket.wiring.seats import wire_dependencies as wire_grades
 
         async def get_test_db():
@@ -243,19 +375,21 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
 
         @self.app.get("/test/grades")
         async def grades(service: SeatInfoService = Depends(provide_seat_info_service)):
-            return await service.list_seat_infos(10)
+            return await service.get_seat_info(101)
 
         response = await self.client.get("/test/grades")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([item["seat_id"] for item in response.json()], [101, 103])
+        self.assertEqual(response.json()["seat_id"], 101)
 
     async def test_upper_layers_do_not_import_infrastructure(self):
         root = Path(__file__).resolve().parents[2] / "src/asyncticket"
-        for domain in ("seats", "performance_seats"):
+        for domain in ("seats",):
             seats = root / domain
             for folder in ("domain", "application", "presentation"):
-                for source in (seats / folder).glob("*.py"):
-                    tree = ast.parse(source.read_text())
+                sources = list((seats / folder).glob("*.py"))
+                self.assertTrue(sources, f"검사할 파일이 없습니다: {folder}")
+                for source in sources:
+                    tree = ast.parse(source.read_text(encoding="utf-8"))
                     imports = []
                     for node in ast.walk(tree):
                         if isinstance(node, ast.ImportFrom):
@@ -263,12 +397,14 @@ class SeatQueryTests(unittest.IsolatedAsyncioTestCase):
                         elif isinstance(node, ast.Import):
                             imports.extend(alias.name for alias in node.names)
                     with self.subTest(file=source.name):
-                        self.assertFalse(any(
-                            ".infrastructure" in name
-                            or name.startswith("sqlalchemy")
-                            or name == "asyncticket.shared.core.database"
-                            for name in imports
-                        ))
+                        self.assertFalse(
+                            any(
+                                ".infrastructure" in name
+                                or name.startswith("sqlalchemy")
+                                or name == "asyncticket.shared.core.database"
+                                for name in imports
+                            )
+                        )
 
 
 if __name__ == "__main__":

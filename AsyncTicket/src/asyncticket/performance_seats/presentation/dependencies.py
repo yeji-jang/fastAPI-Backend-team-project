@@ -1,6 +1,0 @@
-from asyncticket.performance_seats.application.service import PerformanceSeatService
-
-
-def provide_performance_seat_service() -> PerformanceSeatService:
-    """튜터 예제처럼 wiring/performance_seats.py에서 실제 서비스 생성 함수로 연결한다."""
-    raise NotImplementedError("좌석 서비스 의존성이 연결되지 않았습니다.")

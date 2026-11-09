@@ -10,6 +10,7 @@ from asyncticket.auth.domain.entities import (
 from asyncticket.auth.domain.service import (
     AccessTokenPayload,
 )
+from asyncticket.auth.infrastructure.security import JwtTokenProvider
 from asyncticket.shared.core.exceptions import (
     UnauthorizedException,
 )
@@ -160,6 +161,56 @@ class AuthApplicationTests(
 
         with self.assertRaises(UnauthorizedException):
             await self.service.authenticate("fake-token")
+
+    async def test_logout_same_token_twice_is_idempotent(self):
+        await self.service.logout("fake-token")
+        await self.service.logout("fake-token")
+
+        self.assertEqual(
+            self.blacklist_repository.tokens,
+            {"fake-jti"},
+        )
+
+    async def test_expired_token_cannot_authenticate(self):
+        token_provider = JwtTokenProvider(
+            secret_key="test-secret-key-for-auth-tests-32",
+            access_token_minutes=-1,
+        )
+        token_payload = token_provider.issue_access_token(
+            user_id=1,
+            role=UserRole.BUYER,
+        )
+        service = AuthApplicationService(
+            user_repository=self.user_repository,
+            token_blacklist_repository=self.blacklist_repository,
+            token_provider=token_provider,
+            password_hasher=self.password_hasher,
+        )
+
+        with self.assertRaises(UnauthorizedException):
+            await service.authenticate(token_payload.access_token)
+
+    async def test_tampered_token_cannot_authenticate(self):
+        token_provider = JwtTokenProvider(
+            secret_key="test-secret-key-for-auth-tests-32",
+        )
+        token_payload = token_provider.issue_access_token(
+            user_id=1,
+            role=UserRole.BUYER,
+        )
+        tampered_token = (
+            token_payload.access_token[:-1]
+            + ("a" if token_payload.access_token[-1] != "a" else "b")
+        )
+        service = AuthApplicationService(
+            user_repository=self.user_repository,
+            token_blacklist_repository=self.blacklist_repository,
+            token_provider=token_provider,
+            password_hasher=self.password_hasher,
+        )
+
+        with self.assertRaises(UnauthorizedException):
+            await service.authenticate(tampered_token)
 
 
 if __name__ == "__main__":

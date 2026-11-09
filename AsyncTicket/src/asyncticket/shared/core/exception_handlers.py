@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from asyncticket.shared.core.exceptions import SharedException
 from asyncticket.shared.core.logger import get_logger
 from asyncticket.shared.core.schemas import APIResponse
+from asyncticket.shared.core.validation_messages import korean_validation_message
 
 logger = get_logger(__name__)
 
@@ -40,7 +41,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         for err in exc.errors():
             loc = ".".join(str(item) for item in err["loc"] if item != "body")
             field_name = loc if loc else "non_field_errors"
-            errors_map.setdefault(field_name, []).append(err["msg"])
+            errors_map.setdefault(field_name, []).append(korean_validation_message(err))
 
         logger.warning("요청 파라미터 유효성 검증 실패 (path: %s, method: %s): %s", request.url.path, request.method, errors_map)
 

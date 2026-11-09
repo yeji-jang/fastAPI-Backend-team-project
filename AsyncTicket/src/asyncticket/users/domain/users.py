@@ -123,6 +123,7 @@ class User:
 
     def withdraw(self, requester: "User") -> None:
         self._ensure_active()
+        requester.ensure_active()
 
         is_owner = (
             self.user_id is not None

@@ -9,6 +9,7 @@ from asyncticket.auth.domain.service import (
     AccessTokenPayload,
     TokenProvider,
 )
+from asyncticket.auth.domain.exceptions import InvalidAccessTokenError
 from asyncticket.users.domain.users import UserRole
 
 
@@ -74,31 +75,31 @@ class JwtTokenProvider(TokenProvider):
         self,
         token: str,
     ) -> AccessTokenPayload:
-        decoded_payload = jwt.decode(
-            token,
-            self.secret_key,
-            algorithms=[self.algorithm],
-        )
-
-        subject = decoded_payload.get("sub")
-        role_value = decoded_payload.get("role")
-        jti = decoded_payload.get("jti")
-        exp = decoded_payload.get("exp")
-
-        if not subject or not role_value or not jti or not exp:
-            raise InvalidTokenError(
-                "필수 JWT claim이 없습니다."
+        try:
+            decoded_payload = jwt.decode(
+                token,
+                self.secret_key,
+                algorithms=[self.algorithm],
             )
 
-        try:
+            subject = decoded_payload.get("sub")
+            role_value = decoded_payload.get("role")
+            jti = decoded_payload.get("jti")
+            exp = decoded_payload.get("exp")
+
+            if not subject or not role_value or not jti or not exp:
+                raise InvalidTokenError(
+                    "필수 JWT claim이 없습니다."
+                )
+
             user_id = int(subject)
             role = UserRole(role_value)
             expires_at = datetime.fromtimestamp(
                 int(exp),
                 tz=timezone.utc,
             )
-        except (TypeError, ValueError) as exc:
-            raise InvalidTokenError(
+        except (InvalidTokenError, TypeError, ValueError) as exc:
+            raise InvalidAccessTokenError(
                 "JWT claim 형식이 올바르지 않습니다."
             ) from exc
 

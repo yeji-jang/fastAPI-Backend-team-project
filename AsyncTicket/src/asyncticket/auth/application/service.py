@@ -1,4 +1,5 @@
 from asyncticket.auth.domain.entities import BlacklistedToken
+from asyncticket.auth.domain.exceptions import InvalidAccessTokenError
 from asyncticket.auth.domain.repository import TokenBlacklistRepository
 from asyncticket.auth.domain.service import (
     AccessTokenPayload,
@@ -96,25 +97,7 @@ class AuthApplicationService:
         4. 탈퇴 회원 여부 확인
         """
 
-        try:
-            payload = self.token_provider.verify_access_token(
-                access_token
-            )
-        except Exception as exc:
-            raise UnauthorizedException(
-                message="인증 정보가 올바르지 않거나 만료되었습니다.",
-                error_code="INVALID_ACCESS_TOKEN",
-            ) from exc
-
-        is_blacklisted = await self.token_blacklist_repository.exists(
-            payload.jti
-        )
-
-        if is_blacklisted:
-            raise UnauthorizedException(
-                message="폐기된 인증 정보입니다.",
-                error_code="REVOKED_ACCESS_TOKEN",
-            )
+        payload = await self._get_valid_payload(access_token)
 
         user = await self.user_repository.find_by_id(
             payload.user_id
@@ -142,15 +125,7 @@ class AuthApplicationService:
         jti를 blacklist 테이블에 저장하여 이후 인증을 차단한다.
         """
 
-        try:
-            payload = self.token_provider.verify_access_token(
-                access_token
-            )
-        except Exception as exc:
-            raise UnauthorizedException(
-                message="인증 정보가 올바르지 않거나 만료되었습니다.",
-                error_code="INVALID_ACCESS_TOKEN",
-            ) from exc
+        payload = await self._get_verified_payload(access_token)
 
         blacklisted_token = BlacklistedToken(
             jti_token=payload.jti,
@@ -172,15 +147,27 @@ class AuthApplicationService:
         토큰 기반 사용자 식별이 필요할 때 사용할 수 있다.
         """
 
+        return await self._get_valid_payload(access_token)
+
+    async def _get_verified_payload(
+        self,
+        access_token: str,
+    ) -> AccessTokenPayload:
         try:
-            payload = self.token_provider.verify_access_token(
+            return self.token_provider.verify_access_token(
                 access_token
             )
-        except Exception as exc:
+        except (InvalidAccessTokenError, ValueError, TypeError) as exc:
             raise UnauthorizedException(
                 message="인증 정보가 올바르지 않거나 만료되었습니다.",
                 error_code="INVALID_ACCESS_TOKEN",
             ) from exc
+
+    async def _get_valid_payload(
+        self,
+        access_token: str,
+    ) -> AccessTokenPayload:
+        payload = await self._get_verified_payload(access_token)
 
         is_blacklisted = await self.token_blacklist_repository.exists(
             payload.jti
