@@ -1,0 +1,59 @@
+{% extends "catalog_base.html" %}
+{% block title %}내 예매{% endblock %}
+{% block head %}{% include "catalog_detail_styles.html" %}{% endblock %}
+{% block content %}
+<div class="detail-page">
+    <header class="detail-header">
+        <p class="detail-kicker">MY TICKETS</p>
+        <h1>내 예매</h1>
+    </header>
+    <p id="reservation-status" role="status">예매 내역을 불러오는 중…</p>
+    <p id="reservation-login" hidden><a href="/login">로그인</a></p>
+    <ul id="reservation-list"></ul>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+    document.addEventListener("DOMContentLoaded", async () => {
+        const status = document.querySelector("#reservation-status");
+        try {
+            const user = await accountSession.current();
+            if (!user) {
+                status.textContent = "로그인하면 내 예매 내역을 볼 수 있어요.";
+                document.querySelector("#reservation-login").hidden = false;
+                return;
+            }
+            if (user.role !== "BUYER") {
+                status.textContent = "예매자 계정에서 이용할 수 있어요.";
+                return;
+            }
+            const data = await requestApi("/v1/reservations", { headers: accountSession.headers(), cache: "no-store" });
+            const records = Array.isArray(data) ? data : data?.items;
+            if (!Array.isArray(records)) throw new Error("예매 내역을 불러오지 못했습니다.");
+
+            const list = document.querySelector("#reservation-list");
+            for (const record of records) {
+                const item = document.createElement("li");
+                item.textContent = [record.order_number, record.status].filter(Boolean).join(" · ");
+                const amount = document.createElement("span");
+                amount.textContent = ` · ${Number(record.total_amount).toLocaleString("ko-KR")}원 `;
+                item.append(amount);
+                if (record.status === "PENDING") {
+                    const pay = document.createElement("a");
+                    pay.href = `/checkout/${encodeURIComponent(record.reserv_id)}`;
+                    pay.textContent = "결제 이어하기";
+                    item.append(pay);
+                }
+                const detail = document.createElement("a");
+                detail.href = `/performances/${encodeURIComponent(record.perf_id)}`;
+                detail.textContent = " 회차 보기";
+                item.append(detail);
+                list.append(item);
+            }
+            status.textContent = records.length ? "" : "아직 예매 내역이 없어요.";
+        } catch (error) {
+            status.textContent = error.message;
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,28 @@
+.account-nav [hidden] { display: none !important; }
+.account-guest { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.account-menu { position: relative; }
+.account-menu summary { cursor: pointer; padding: .25rem .45rem; font-size: .85rem; font-weight: 750; }
+.account-menu ul {
+    position: absolute;
+    z-index: 5;
+    right: 0;
+    top: 100%;
+    min-width: max-content;
+    margin: .2rem 0 0;
+    padding: .25rem 0;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #161616;
+    box-shadow: 3px 3px 0 #161616;
+}
+.account-menu a, .account-menu button { display: block; padding: .45rem .7rem; color: #161616; text-decoration: none; }
+.account-menu button { width: 100%; border: 0; background: transparent; font: inherit; font-size: .85rem; text-align: left; cursor: pointer; }
+.account-menu button:disabled { cursor: wait; }
+.account-logout { border-top: 1px solid #bbb; }
+.account-logout p { margin: 0; padding: .3rem .7rem; max-width: 11rem; font-size: .75rem; }
+.masthead .account-menu button { font: 700 .71rem/1.15 monospace; letter-spacing: .055em; }
+.account-menu :is(a, button):is(:hover, :focus-visible) { text-decoration: underline; }
+.catalog-nav { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; }
+@media (max-width: 650px) {
+    .masthead .account-menu ul { right: auto; left: 0; }
+}

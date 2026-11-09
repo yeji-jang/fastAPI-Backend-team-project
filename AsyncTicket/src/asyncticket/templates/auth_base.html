@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{% endblock %} | AsyncTicket</title>
+    <style>
+        :root {
+            --ink: #161616;
+            --paper: #f5f5f3;
+            --muted: #555;
+            --line: 1px solid var(--ink);
+            color: var(--ink);
+            background: var(--paper);
+            font: 16px/1.5 Arial, "Apple SD Gothic Neo", sans-serif;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+        body { margin: 0; }
+        a { color: inherit; text-underline-offset: .25em; }
+        :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+        .auth-nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 62px;
+            gap: .65rem;
+            padding: .75rem clamp(1rem, 4vw, 3rem);
+            border-bottom: var(--line);
+        }
+        .auth-brand {
+            font-weight: 900;
+            font-size: clamp(1.25rem, 3vw, 2rem);
+            letter-spacing: -.085em;
+            line-height: 1;
+            text-decoration: none;
+        }
+        .auth-brand span { font-weight: 500; }
+        .auth-brand sup { font-size: .5em; margin-left: .35rem; vertical-align: top; }
+        .auth-main { width: min(100% - 2.5rem, 28rem); margin: clamp(2rem, 8vw, 6.5rem) auto 2.5rem; }
+        .auth-heading { padding-bottom: 1.15rem; border-bottom: var(--line); margin-bottom: 1.4rem; }
+        .auth-kicker { margin: 0 0 .65rem; font: 700 .72rem/1.4 monospace; letter-spacing: .065em; }
+        .auth-heading h1 { margin: 0 0 .45rem; font-size: clamp(2.7rem, 10vw, 5.35rem); letter-spacing: -.085em; line-height: 1.04; }
+        .auth-heading p:last-child { color: var(--muted); margin: 0; }
+        .auth-main form { display: grid; gap: .9rem; }
+        .auth-main form p { margin: 0; }
+        .auth-main label { display: block; margin-bottom: .32rem; font-size: .87rem; font-weight: 700; }
+        .auth-main input {
+            display: block;
+            width: 100%;
+            min-height: 45px;
+            border: 1px solid #777;
+            border-radius: 0;
+            background: #fff;
+            color: var(--ink);
+            padding: .5rem .65rem;
+            font: inherit;
+        }
+        .auth-main button {
+            width: 100%;
+            min-height: 46px;
+            background: var(--ink);
+            color: #fff;
+            border: var(--line);
+            border-radius: 0;
+            padding: .55rem .9rem;
+            font: inherit;
+            font-weight: 750;
+            text-align: left;
+            cursor: pointer;
+        }
+        .auth-main button:not(:disabled):hover { background: #333; }
+        .auth-main button:disabled { background: #eee; color: #555; cursor: wait; }
+        .auth-result { margin: .8rem 0 0; font-size: .9rem; }
+        .auth-result:empty { display: none; }
+        .auth-footer { margin: 1.3rem 0 0; padding-top: .85rem; border-top: var(--line); font-size: .88rem; color: var(--muted); }
+        .auth-footer a { margin-left: .3rem; color: var(--ink); font-weight: 700; }
+    </style>
+    {% block head %}{% endblock %}
+    {% include "account_assets.html" %}
+</head>
+<body>
+    <header class="auth-nav">
+        <a class="auth-brand" href="/">ASYNC<span>TICKET</span><sup aria-hidden="true">✳</sup></a>
+        {% include "account_nav.html" %}
+    </header>
+    <main class="auth-main">
+        <header class="auth-heading">
+            <p class="auth-kicker">ASYNC TICKET / ACCOUNT</p>
+            <h1>{% block heading %}{% endblock %}</h1>
+            <p>{% block introduction %}{% endblock %}</p>
+        </header>
+        {% block content %}{% endblock %}
+        <p class="auth-footer">{% block alternate %}{% endblock %}</p>
+    </main>
+    {% block script %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,86 @@
+{% extends "catalog_base.html" %}
+{% block title %}공연 관리{% endblock %}
+{% block head %}
+{% include "catalog_detail_styles.html" %}
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='seat_layout.css').path }}">
+<style>
+    .catalog-toolbar, .catalog-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; }
+    .catalog-toolbar[hidden] { display: none; }
+    .catalog-toolbar { justify-content: space-between; margin: 1.25rem 0; }
+    .catalog-actions :is(a, button) { border: 1px solid #777; padding: .35rem .6rem; text-decoration: none; font-size: .85rem; }
+    .catalog-actions :is(a, button):is(:hover, :focus-visible) { background: #161616; color: #fff; }
+    .catalog-seat-actions { margin-bottom: .75rem; font-size: .85rem; }
+    .catalog-seat-actions button { font-family: inherit; border-radius: 0; background: #fff; color: #161616; cursor: pointer; }
+    .catalog-seat-actions button[aria-disabled="true"] { opacity: .6; cursor: wait; }
+    .catalog-toolbar .catalog-primary { background: #161616; color: #fff; }
+    .catalog-record { border-block-start: 1px solid #aaa; }
+    .catalog-record > summary {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto 1rem;
+        align-items: center; gap: .75rem; cursor: pointer; padding: .85rem .75rem;
+    }
+    .catalog-record > summary::-webkit-details-marker { display: none; }
+    .catalog-record > summary::after { content: "+"; font: 700 1rem monospace; }
+    .catalog-record[open] > summary::after { content: "−"; }
+    .catalog-record[open] > summary { background: #161616; color: #fff; }
+    .catalog-record-title { font-weight: 750; overflow-wrap: anywhere; }
+    .catalog-record-meta { font-size: .82rem; overflow-wrap: anywhere; }
+    .catalog-record-body { padding: .7rem; background: #fff; }
+    .catalog-record-body > .catalog-actions { margin: 0 0 .75rem; }
+    .catalog-record-body > .catalog-record { margin-left: .5rem; }
+    .catalog-table-wrap { overflow-x: auto; }
+    .catalog-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .88rem; }
+    .catalog-table th, .catalog-table td { border-bottom: 1px solid #bbb; padding: .55rem; white-space: nowrap; }
+    .catalog-table th { background: #eee; }
+    .catalog-seat-detail { margin-top: .75rem; }
+    .catalog-seat-detail summary { cursor: pointer; font-weight: 650; }
+    .catalog-seat-map { --seat-row-label-width: 1rem; --seat-row-gap: clamp(2px, .65vw, 9px); margin-top: .8rem; padding: clamp(.5rem, 2vw, 1.25rem); background: #f3f3f3; border: 1px solid #aaa; }
+    .catalog-stage {
+        margin: 0 auto 1rem; padding: .55rem; max-width: 28rem; text-align: center;
+        background: #e3e3e3; border-top: 2px solid #161616; font: 700 .8rem monospace;
+    }
+    .catalog-seat {
+        display: grid; place-items: center; min-height: 34px; min-width: 0; padding: .2rem 0;
+        font: 700 clamp(.6rem, 1.6vw, .8rem) monospace; text-align: center; overflow-wrap: anywhere;
+    }
+    .catalog-seat-map .row-label { font-size: .68rem; }
+    .catalog-seat-status { border: 1px solid #161616; background: #fff; color: #161616; }
+    .catalog-seat-status[data-state="RESERVED"] { background: repeating-linear-gradient(135deg, #d4d4d4 0 3px, #eee 3px 6px); }
+    .catalog-seat-status[data-state="OCCUPIED"] { background: #161616; color: #fff; }
+    .catalog-seat-status[data-state="UNPRICED"], .catalog-seat-status[data-state="UNKNOWN"] { border-style: dashed; }
+    .catalog-seat-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem .75rem; list-style: none; padding: 0; font-size: .76rem; }
+    .catalog-seat-legend li { display: flex; align-items: center; gap: .35rem; }
+    .catalog-seat-legend .catalog-seat-status { width: .8rem; height: .8rem; display: inline-block; }
+    .catalog-seat-map-note { margin: .7rem 0 0; text-align: center; color: #555; font-size: .76rem; }
+    .catalog-seat-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    #catalog-pages a { margin-right: 1rem; }
+    @media (max-width: 440px) {
+        .catalog-record > summary { grid-template-columns: minmax(0, 1fr) 1rem; gap: .2rem .5rem; }
+        .catalog-record-meta { grid-column: 1; grid-row: 2; }
+        .catalog-record > summary::after { grid-column: 2; grid-row: 1 / span 2; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="detail-page">
+    <header class="detail-header">
+        <p class="detail-kicker">SELLER DESK / CATALOG</p>
+        <h1>공연 관리</h1>
+    </header>
+    <p>공연을 선택하고 회차를 펼치면, 등록된 좌석과 등급별 가격을 확인할 수 있어요.</p>
+    <div class="catalog-toolbar" id="catalog-toolbar" hidden>
+        <strong id="catalog-count"></strong>
+        <div class="catalog-actions">
+            <a href="/manage/edit#venue-management">공연장 등록·수정</a>
+            <a class="catalog-primary" href="/manage/edit#show-management">공연 등록</a>
+        </div>
+    </div>
+    <p id="catalog-status" role="status">공연을 불러오는 중…</p>
+    <p id="catalog-login" hidden><a href="/login">로그인</a></p>
+    <div id="catalog-records"></div>
+    <p id="catalog-pages"></p>
+</div>
+{% endblock %}
+{% block script %}
+<script src="{{ url_for('venue_assets', path='seat_layout.js').path }}" defer></script>
+<script src="{{ url_for('venue_assets', path='manage_catalog.js').path }}" defer></script>
+{% endblock %}
