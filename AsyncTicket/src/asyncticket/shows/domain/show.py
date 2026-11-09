@@ -39,7 +39,11 @@ class Show:
         validate_show(values, policy)
 
     def with_changes(self, changes: Mapping[str, object], policy: CatalogPolicy) -> Self:
-        """생략한 값은 유지하고, 전체 값이 유효한 새 공연을 반환한다."""
+        """같은 show_id를 유지하는 변경 후보를 검증해 반환한다.
+
+        생략한 값은 유지한다. 이 메서드는 DB에 행을 추가하거나 저장하지
+        않는다. 응용 서비스가 공연장·회차 연결을 확인한 뒤 기존 행을 수정한다.
+        """
         if changes.keys() - self._MUTABLE_FIELDS:
             raise CatalogValidationError("공연의 변경할 수 없는 필드입니다.")
         # 현재 정책의 검사 순서를 유지한 뒤 새 객체를 만든다.

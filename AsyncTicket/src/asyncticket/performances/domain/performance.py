@@ -39,7 +39,11 @@ class Performance:
         validate_performance(values, policy)
 
     def with_changes(self, changes: Mapping[str, object], policy: CatalogPolicy) -> Self:
-        """부분 변경을 기존 값과 합쳐 검증하고 새 회차를 반환한다."""
+        """같은 perf_id와 show_id를 유지하는 변경 후보를 검증해 반환한다.
+
+        부분 변경을 기존 값과 합친다. 이 메서드는 DB에 행을 추가하거나
+        저장하지 않는다. 응용 서비스가 중복·연결 제한을 확인한 뒤 기존 행을 수정한다.
+        """
         if changes.keys() - self._MUTABLE_FIELDS:
             raise CatalogValidationError("회차의 변경할 수 없는 필드입니다.")
         self.validate_creation({**asdict(self), **changes}, policy)
