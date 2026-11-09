@@ -31,7 +31,10 @@ from asyncticket.reservations.domain.reservation import (
     ReservationConflictError,
     ReservationForbiddenError,
     ReservationValidationError,
+    # 상수
+    PENDING_EXPIRE_MINUTES,
 )
+
 
 # 테스트에서 쓸 고정 시각과 아이디
 #   예매 기간 : 11/1 ~ 11/30 (11/30 00:00 정각은 마감)
@@ -44,6 +47,7 @@ NOW = datetime(2026, 11, 5, tzinfo=timezone.utc)
 
 ONE_SECOND = timedelta(seconds=1)
 ONE_DAY = timedelta(days=1)
+EXPIRE_TIME = timedelta(minutes=PENDING_EXPIRE_MINUTES)   # 결제 대기 시간 (5분)
 
 OWNER_ID = 1    # 예매한 본인
 OTHER_ID = 2    # 다른 회원
@@ -81,6 +85,12 @@ class ReservationTests(unittest.TestCase):
         """테스트용 예매확정(CONFIRMED) 예매를 만드는 도우미 (예매대기 → 결제 성공 → 확정)"""
         reservation = self.make_reservation()
         reservation.confirm(self.payment, NOW)
+        return reservation
+
+    def make_saved_reservation(self):
+        """DB에 저장된 예매대기 예매를 만드는 도우미 (NOW에 생성된 것으로 created_at을 채운다)"""
+        reservation = self.make_reservation()
+        reservation.created_at = NOW
         return reservation
 
     # =========================================================
@@ -290,6 +300,73 @@ class ReservationTests(unittest.TestCase):
         # 예매자를 바꾸려고 하면 오류
         with self.assertRaises(FrozenInstanceError):
             reservation.ticketholder.ticketholder_id = OTHER_ID
+
+    # =========================================================
+    # 6. 예매대기 만료 (결제 대기 시간 5분)
+    # =========================================================
+    def test_결제_대기_시간_1초_전에는_만료되지_않는다(self):
+        reservation = self.make_saved_reservation()
+
+        self.assertFalse(reservation.is_expired(NOW + EXPIRE_TIME - ONE_SECOND))
+
+    def test_결제_대기_시간_정각부터_만료된다(self):
+        reservation = self.make_saved_reservation()
+
+        self.assertTrue(reservation.is_expired(NOW + EXPIRE_TIME))
+
+    def test_DB_저장_전_예매는_만료되지_않는다(self):
+        # created_at이 없으면 기준 시각이 없으므로 만료로 보지 않는다
+        reservation = self.make_reservation()
+
+        self.assertFalse(reservation.is_expired(NOW + ONE_DAY))
+
+    def test_확정된_예매는_시간이_지나도_만료되지_않는다(self):
+        reservation = self.make_saved_reservation()
+        reservation.confirm(self.payment, NOW + ONE_SECOND)
+
+        self.assertFalse(reservation.is_expired(NOW + ONE_DAY))
+
+    def test_시간이_지난_예매대기는_만료된다(self):
+        # 준비
+        reservation = self.make_saved_reservation()
+
+        # 실행
+        reservation.expire(NOW + EXPIRE_TIME)
+
+        # 확인
+        self.assertEqual(reservation.status, ReservationStatus.EXPIRED)
+
+    def test_시간이_지나지_않은_예매는_만료할_수_없다(self):
+        reservation = self.make_saved_reservation()
+
+        with self.assertRaises(ReservationConflictError) as error:
+            reservation.expire(NOW + EXPIRE_TIME - ONE_SECOND)
+
+        self.assertEqual(error.exception.error_code, "RESERVATION_NOT_EXPIRABLE")
+        self.assertEqual(reservation.status, ReservationStatus.PENDING)   # 그대로
+
+    def test_결제_대기_시간이_지나면_확정할_수_없다(self):
+        # 만료 처리가 아직 안 돌았어도(PENDING) 시간이 지났으면 확정 불가
+        reservation = self.make_saved_reservation()
+
+        with self.assertRaises(ReservationConflictError) as error:
+            reservation.confirm(self.payment, NOW + EXPIRE_TIME)
+
+        self.assertEqual(error.exception.error_code, "RESERVATION_EXPIRED")
+        self.assertEqual(reservation.status, ReservationStatus.PENDING)   # 확정 안 됨
+        self.assertIsNone(reservation.payment)                           # 결제 정보 기록 안 됨
+
+    def test_만료된_예매는_확정할_수_없다(self):
+        # 만료 후 늦게 결제 성공이 와도 확정 불가 -> 결제 쪽에서 환불해야 함
+        reservation = self.make_saved_reservation()
+        reservation.expire(NOW + EXPIRE_TIME)
+
+        with self.assertRaises(ReservationConflictError) as error:
+            reservation.confirm(self.payment, NOW + EXPIRE_TIME + ONE_SECOND)
+
+        self.assertEqual(error.exception.error_code, "RESERVATION_NOT_PENDING")
+        self.assertEqual(reservation.status, ReservationStatus.EXPIRED)
+
 
 
 if __name__ == "__main__":
