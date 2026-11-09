@@ -1,13 +1,22 @@
-"""도메인 계층: 공연 데이터를 표현한다. HTTP·SQLAlchemy 객체를 포함하지 않는다."""
+"""공연의 값 검증과 정보 변경을 담당하는 순수 도메인 모델."""
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
+from typing import ClassVar, Self
 
-from asyncticket.shared.domain.catalog import CatalogNotFoundError
+from asyncticket.shared.domain.catalog import (
+    CatalogNotFoundError, CatalogPolicy, CatalogValidationError,
+)
+from asyncticket.shared.domain.catalog_validation import validate_show
 
 
 @dataclass(frozen=True)
 class Show:
+    _MUTABLE_FIELDS: ClassVar[frozenset[str]] = frozenset({
+        "venues_id", "title", "description", "performer", "type", "runtime",
+    })
+
     show_id: int
     venues_id: int
     user_id: int
@@ -18,6 +27,24 @@ class Show:
     runtime: int | None
     created_at: datetime
     updated_at: datetime | None
+
+    def __post_init__(self) -> None:
+        # 저장된 데이터의 복원에도 값 자체의 규칙을 적용한다.
+        # 앱별 분류 허용값은 쓰기 작업에서 전달받은 정책으로만 검사한다.
+        validate_show(asdict(self), CatalogPolicy())
+
+    @staticmethod
+    def validate_creation(values: Mapping[str, object], policy: CatalogPolicy) -> None:
+        """DB가 ID를 발급하기 전에 등록할 공연 값을 검증한다."""
+        validate_show(values, policy)
+
+    def with_changes(self, changes: Mapping[str, object], policy: CatalogPolicy) -> Self:
+        """생략한 값은 유지하고, 전체 값이 유효한 새 공연을 반환한다."""
+        if changes.keys() - self._MUTABLE_FIELDS:
+            raise CatalogValidationError("공연의 변경할 수 없는 필드입니다.")
+        # 현재 정책의 검사 순서를 유지한 뒤 새 객체를 만든다.
+        self.validate_creation({**asdict(self), **changes}, policy)
+        return replace(self, **changes)
 
 
 @dataclass(frozen=True)

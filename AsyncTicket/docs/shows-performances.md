@@ -35,6 +35,28 @@
 - 없는 대상은 404, 잘못된 입력은 422, 변경 권한 없음은 403, 연결/중복 충돌은 409다.
   성공·실패 JSON은 팀 공통 `APIResponse`를 사용한다.
 
+## 도메인 객체의 생성과 변경
+
+[Show](../src/asyncticket/shows/domain/show.py)와
+[Performance](../src/asyncticket/performances/domain/performance.py)는 값을 보관하고,
+생성·정보 변경 시 기존 값 규칙을 직접 보장하는 불변 도메인 객체다.
+
+- `__post_init__`는 제목·공연시간 또는 회차번호·매수·시간대·시간순서 등의 기본 규칙을 검사한다.
+- `validate_creation(values, policy)`는 DB가 ID를 발급하기 전에 등록 값을 검증한다.
+  기존 저장소의 `create(values)` 계약과 DB의 ID·생성시각 발급 방식을 유지한다.
+- `with_changes(changes, policy)`는 기존 값과 변경값을 합쳐 검증한 새 객체를 반환한다.
+  생략한 필드와 원본 객체는 유지하고, nullable 필드의 명시적 null은 반영한다.
+  ID·소유자·생성시각 등의 불변 필드는 변경할 수 없다.
+- 순수 검증 함수는 기존 `shared/domain/catalog_validation.py`를 재사용한다.
+  앱별 공연 분류·상태 허용값은 등록·수정에 전달된 `CatalogPolicy`로 검사하며,
+  객체를 복원할 때는 현재 앱의 허용값을 강제하지 않는다.
+
+응용 서비스는 대상 조회·권한·잠금·중복 및 연결 데이터 확인을 조율하고,
+도메인 객체의 검증과 변경이 통과한 값만 저장소에 전달해 commit/rollback한다.
+DB 조회·저장과 HTTP 응답 처리는 도메인 객체가 수행하지 않는다.
+기본 값 규칙은 DB 조회 결과를 객체로 복원할 때도 검사하므로,
+규칙을 위반하는 기존 데이터는 별도로 확인해야 한다.
+
 ## 공통 응답·예외 계약
 
 조회·등록·수정의 성공 응답은 `APIResponse[각 DTO].ok(data=...)`다.

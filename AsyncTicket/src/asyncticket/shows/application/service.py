@@ -1,13 +1,11 @@
 """응용 계층: 공연 API의 작업 순서와 트랜잭션을 조율한다."""
 
-from dataclasses import asdict
 from datetime import datetime, timezone
 
 from asyncticket.shared.domain.catalog import (
     CatalogActor, CatalogConflictError, CatalogNotFoundError, CatalogPolicy,
     CatalogRelations, CatalogUnitOfWork,
 )
-from asyncticket.shared.domain.catalog_validation import validate_show
 from asyncticket.shows.domain.repositories import ShowRepository
 from asyncticket.shows.domain.show import Show, ShowNotFoundError, ShowQuery
 
@@ -42,7 +40,7 @@ class ShowApplicationService:
     async def create(self, values: dict[str, object], actor: CatalogActor) -> Show:
         try:
             self._policy.authorize(actor)
-            validate_show(values, self._policy)
+            Show.validate_creation(values, self._policy)
             if not await self._relations.venue_exists(values["venues_id"]):
                 raise CatalogNotFoundError("공연장을 찾을 수 없습니다.")
             # 소유자는 요청 본문이 아닌, 검증된 인증 사용자에서 정한다.
@@ -58,15 +56,17 @@ class ShowApplicationService:
     ) -> Show:
         try:
             show = await self.authorize_owner(show_id, actor)
-            merged = {**asdict(show), **changes}
-            validate_show(merged, self._policy)
+            changed = show.with_changes(changes, self._policy)
             if "venues_id" in changes and changes["venues_id"] != show.venues_id:
                 if not await self._relations.venue_exists(changes["venues_id"]):
                     raise CatalogNotFoundError("공연장을 찾을 수 없습니다.")
                 if await self._relations.show_has_performances(show_id):
                     raise CatalogConflictError("회차가 연결된 공연의 공연장은 변경할 수 없습니다.")
             show = await self._repository.update(
-                show_id, {**changes, "updated_at": datetime.now(timezone.utc)}
+                show_id, {
+                    **{key: getattr(changed, key) for key in changes},
+                    "updated_at": datetime.now(timezone.utc),
+                }
             )
             await self._uow.commit()
             return show
