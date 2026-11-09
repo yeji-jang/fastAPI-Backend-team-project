@@ -5,8 +5,8 @@
 - 규칙에 필요한 외부 값은 VO로 전달받고, 판단은 예매가 한다
 
 <도메인 비즈니스 요구사항 정의>
-    1) 예매는 3가지 상태로 관리
-        - 예매대기(PENDING), 예매확정(CONFIRMED), 예매취소(CANCELED)
+    1) 예매는 4가지 상태로 관리
+        - 예매대기(PENDING), 예매확정(CONFIRMED), 예매취소(CANCELED), 예매만료(EXPIRED)
     2) 예매 생성 (예매하기)
         - 예매 1건에는 좌석수량 1개만 예매가능 (quantity = 1)
         - 예매 금액은 0원보다 커야 한다
@@ -17,6 +17,7 @@
         - 주문번호는 생성할 때 "ORD-"로 시작하는 고유 번호로 만든다 (토스 orderId로 사용)
     3) 예매 확정 (결제 성공 후)
         - 예매대기(PENDING) 상태에서만 확정 가능
+        - 결제 대기 시간(5분)이 지나면 확정할 수 없다
         - 확정되면 예매확정(CONFIRMED)이 되고 결제 정보와 확정 일시를 기록한다
         - 결제 성공 여부는 결제 도메인이 판단
     4) 예매 조회
@@ -27,10 +28,14 @@
         - 예매확정(CONFIRMED) 상태에서만 취소 가능
         - 공연 시작 전까지만 취소
         - 취소처리되면 예매상태는 취소(CANCELED)가 되고 취소 일시를 기록한다
+    6) 예매대기 만료
+        - 예매대기(PENDING) 상태에서 생성 후 5분이 지나면 만료할 수 있다
+        - 만료되면 예매상태는 예매만료(EXPIRED)가 된다
+        - 만료된 예매는 1인 1건에 포함되지 않아 다시 예매할 수 있다
 """
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal # total_amount
 
 from asyncticket.reservations.domain.enums import ReservationStatus # 요구사항 1번
@@ -77,6 +82,13 @@ class ReservationConflictError(ReservationError):
     - 공연이 시작됨
     - 바뀔 HTTP 상태 : 409
     """
+
+
+# 결제 대기 시간
+# - 예매대기 후 이 시간 안에 결제하지 않으면 예매대기 상태가 만료됨
+# - 결제 : 토스페이먼츠에서 유효기간 사용하지 않아 예매 자체 규칙으로 관리
+PENDING_EXPIRE_MINUTES = 5
+
 
 # 2. VO(Value Object)
 @dataclass(frozen=True, kw_only=True)
@@ -192,7 +204,14 @@ class Reservation:
                 error_code="RESERVATION_NOT_PENDING"
             )
 
-        # 2) 확정하면 예매확정(CONFIRMED)이 되고 결제 정보와 확정 일시를 기록
+        # 2) 결제 대기시간이 지났으면 예매를 확정할 수 없다
+        if self.is_expired(now) :
+            raise ReservationConflictError(
+                message="결제 대기 시간이 지나 예매를 확정할 수 없습니다",
+                error_code="RESERVATION_EXPIRED"
+            )
+
+        # 3) 확정하면 예매확정(CONFIRMED)이 되고 결제 정보와 확정 일시를 기록
         self.status = ReservationStatus.CONFIRMED
         self.payment = payment
         self.confirmed_at = now
@@ -239,3 +258,23 @@ class Reservation:
         # 4) 취소하면 예매 상태는 예매취소(CANCELED)가 되고 취소 일 기록(null -> date생성)
         self.status = ReservationStatus.CANCELED
         self.canceled_at = now
+
+    # 9) 예매대기 만료 여부 (예매대기 상태에서 결제 대기 시간이 지났는지)
+    def is_expired(self, now : datetime) -> bool :
+        if self.status != ReservationStatus.PENDING or self.created_at is None :
+            return False
+
+        return now >= self.created_at + timedelta(minutes=PENDING_EXPIRE_MINUTES)
+
+    # 10) 예매 만료 (결제하지 않고 시간이 지난 예매)
+    def expire(self, now : datetime) -> None :
+
+        # 1) 결제 대기 시간이 지난 예매대기만 만료할 수 있다
+        if not self.is_expired(now) :
+            raise ReservationConflictError(
+                message="만료할 수 없는 예매입니다",
+                error_code="RESERVATION_NOT_EXPIRABLE"
+            )
+
+        # 2) 만료하면 예매 상태는 예매만료(EXPIRED)
+        self.status = ReservationStatus.EXPIRED
