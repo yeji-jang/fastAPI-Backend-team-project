@@ -247,5 +247,52 @@ class ReservationRepositoryTests(unittest.IsolatedAsyncioTestCase):
             await self.repository.reserv_status_update(reservation)
 
 
+    # =========================================================
+    # 5) find_pending_created_before : 만료 대상 예매대기 목록
+    # =========================================================
+    async def test_기준_시각_이전에_만든_예매대기만_돌려준다(self):
+        # 준비 : 기준 시각은 11/5 00:05 (SQLite는 타임존을 버리므로 타임존 없이)
+        before = datetime(2026, 11, 5, 0, 5)
+        self.insert_reservation(reserv_id=1, status="PENDING", confirmed=False,
+                                created_at=datetime(2026, 11, 5, 0, 0))     # 대상 (기준보다 이전)
+        self.insert_reservation(reserv_id=2, status="PENDING", confirmed=False,
+                                created_at=datetime(2026, 11, 5, 0, 5))     # 대상 (기준 정각)
+        self.insert_reservation(reserv_id=3, status="PENDING", confirmed=False,
+                                created_at=datetime(2026, 11, 5, 0, 6))     # 아직 아님 (기준 이후)
+        self.insert_reservation(reserv_id=4, status="CONFIRMED",
+                                created_at=datetime(2026, 11, 5, 0, 0))     # 확정은 제외
+        self.insert_reservation(reserv_id=5, status="CANCELED",
+                                created_at=datetime(2026, 11, 5, 0, 0))     # 취소는 제외
+
+        # 실행
+        reservations = await self.repository.find_pending_created_before(before)
+
+        # 확인 : 예매대기 중에서 기준 시각 이전(정각 포함)만
+        self.assertEqual(sorted(r.reserv_id for r in reservations), [1, 2])
+
+    async def test_만료_대상이_없으면_빈_리스트를_돌려준다(self):
+        self.insert_reservation(reserv_id=1, status="CONFIRMED")
+
+        reservations = await self.repository.find_pending_created_before(datetime(2026, 11, 30))
+
+        self.assertEqual(reservations, [])
+
+    async def test_만료하면_상태가_저장된다(self):
+        # 준비 : 00:00에 만든 예매대기를 5분 뒤에 만료
+        self.insert_reservation(reserv_id=5, status="PENDING", confirmed=False,
+                                created_at=datetime(2026, 11, 5, 0, 0))
+        reservation = await self.repository.find_by_reserv_id(5)
+        reservation.expire(datetime(2026, 11, 5, 0, 5))
+
+        # 실행
+        await self.repository.reserv_status_update(reservation)
+
+        # 확인
+        row = self.db.get(ReservationModel, 5)
+        self.assertEqual(row.status, "EXPIRED")
+        self.assertIsNone(row.confirmed_at)    # 확정된 적 없음
+        self.assertIsNone(row.canceled_at)     # 취소와는 다름
+
+
 if __name__ == "__main__":
     unittest.main()
