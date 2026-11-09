@@ -18,6 +18,7 @@ from asyncticket.seats.domain.performance_seat import PerformanceSeat
 from asyncticket.seats.domain.repository import (
     PerformanceSeatRepository,
     SeatInfoRepository,
+    SeatManagementContext,
     SeatLookupConflictError,
 )
 from asyncticket.seats.domain.seat_info import SeatInfo
@@ -129,7 +130,10 @@ class SqlAlchemySeatInfoRepository(SeatInfoRepository):
         )
 
     # 7) 공연 소유자·회차 판매 시각 조회
-    async def get_management_context(self, perf_id: int) -> dict[str, object] | None:
+    async def get_management_context(
+        self, perf_id: int
+    ) -> SeatManagementContext | None:
+
         stmt = (
             select(shows.c.user_id.label("owner_id"), performances.c.booking_opens_at)
             .select_from(
@@ -139,7 +143,12 @@ class SqlAlchemySeatInfoRepository(SeatInfoRepository):
         )
         result = await self.session.execute(stmt)
         row = result.mappings().one_or_none()
-        return dict(row) if row is not None else None
+        if row is None:
+            return None
+        return SeatManagementContext(
+            owner_id=row["owner_id"],
+            booking_opens_at=row["booking_opens_at"],
+        )
 
     # 8) 호출된 좌석 구성 트랜잭션 확정
     async def commit(self) -> None:

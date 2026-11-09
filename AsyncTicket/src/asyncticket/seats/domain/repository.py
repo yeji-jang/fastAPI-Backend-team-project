@@ -2,9 +2,16 @@
 # - 등급 저장소와 개별 좌석 저장소의 조회·저장 계약을 나눈다.
 
 from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import TypedDict
 
 from asyncticket.seats.domain.performance_seat import PerformanceSeat
 from asyncticket.seats.domain.seat_info import SeatInfo
+
+
+class SeatManagementContext(TypedDict):
+    owner_id: int
+    booking_opens_at: datetime
 
 
 class SeatLookupConflictError(Exception):
@@ -46,7 +53,9 @@ class SeatInfoRepository(ABC):
 
     # 7) 소유자·판매 시각을 관리 권한 검사에 제공
     @abstractmethod
-    async def get_management_context(self, perf_id: int) -> dict[str, object] | None:
+    async def get_management_context(
+        self, perf_id: int
+    ) -> SeatManagementContext | None:
         pass
 
     # 8) 좌석 구성·가격 변경 트랜잭션 확정
