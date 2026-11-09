@@ -72,6 +72,6 @@ payButton.addEventListener("click", async () => {
     } catch (error) { checkoutStatus.textContent = error.message || "결제 요청을 처리하지 못했습니다."; }
     finally { payButton.disabled = false; }
 });
-loadCheckout();
+document.addEventListener("DOMContentLoaded", loadCheckout, { once: true });
 </script>
 {% endblock %}
