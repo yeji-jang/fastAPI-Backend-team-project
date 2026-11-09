@@ -208,7 +208,7 @@ class ReservationRepositoryTests(unittest.IsolatedAsyncioTestCase):
         # 준비 : 예매대기 예매를 조회해서 결제 성공 후 확정
         self.insert_reservation(reserv_id=5, status="PENDING", confirmed=False)
         reservation = await self.repository.find_by_reserv_id(5)
-        confirm_time = datetime(2026, 11, 5, 0, 5)    # SQLite는 타임존을 버리므로 타임존 없이
+        confirm_time = datetime(2026, 11, 5, 0, 3)    # SQLite는 타임존을 버리므로 타임존 없이
         reservation.confirm(ReservedPayment(reserved_pay_id=30), confirm_time)
 
         # 실행

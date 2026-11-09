@@ -209,7 +209,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
     # =========================================================
     async def test_결제_후_확정되고_상태가_저장된다(self):
         await self.store(status=ReservationStatus.PENDING)
-        confirm_time = NOW + timedelta(minutes=5)
+        confirm_time = NOW + timedelta(minutes=3) # 결제 대기시간(5분 안에 확정)
 
         reservation = await self.service.confirm(reserv_id=1, pay_id=30, now=confirm_time)
 
