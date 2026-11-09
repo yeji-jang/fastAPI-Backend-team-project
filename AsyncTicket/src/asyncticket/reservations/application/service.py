@@ -30,10 +30,7 @@ from asyncticket.reservations.domain.reservation import(
     Reservation,
     TicketHolder,
     ReservedPayment,
-    ReservationError,
-    ReservationValidationError,
-    ReservationForbiddenError,
-    ReservationConflictError,
+    ReservationNotFoundError,
 )
 from asyncticket.reservations.domain.service import (
     ReservationChecker,
@@ -44,15 +41,6 @@ from asyncticket.reservations.domain.service import (
 # <Application - 예매>
 from asyncticket.reservations.application.ports import SeatAllocation
 
-
-# <공통 예외>
-from asyncticket.shared.core.exceptions import (
-    ConflictException,
-    ForbiddenException,
-    NotFoundException,
-    SharedException,
-    ValidationException,
-)
 
 class ReservationService:
     """예매 서비스"""
@@ -76,7 +64,7 @@ class ReservationService:
     async def _get_reservation(self, reserv_id: int) -> Reservation :
         reservation = await self.repository.find_by_reserv_id(reserv_id)
         if reservation is None :
-            raise NotFoundException(
+            raise ReservationNotFoundError(
                 message="예매를 찾을 수 없습니다",
                 error_code="RESERVATION_NOT_FOUND")
         return reservation
@@ -102,7 +90,7 @@ class ReservationService:
         performance = await self.performance_reader.get_reserved_performance(perf_id)
 
         if performance is None : 
-            raise NotFoundException(
+            raise ReservationNotFoundError(
                 message="공연 회차를 찾을 수 없습니다",
                 error_code="PERFORMANCE_NOT_FOUND")
 
@@ -110,24 +98,19 @@ class ReservationService:
         seat = await self.seat_reader.get_reserved_seat(perf_id, perf_seat_id)
 
         if seat is None : 
-            raise NotFoundException(
+            raise ReservationNotFoundError(
                 message="해당 회차의 좌석을 찾을 수 없습니다",
                 error_code="SEAT_NOT_FOUND")
 
 
-        # 3) 예매대기 생성 (예매 기간, 금액 규칙은 엔티티가 판단)
-        try :
-            reservation = Reservation.create_pending(
-                ticketholder=TicketHolder(
-                    ticketholder_id=ticketholder_id
-                ),
-                performance=performance,
-                seat=seat,
-                has_active_reservation=has_active, 
-                now=now,
-            )
-        except ReservationError as err : 
-            raise self._to_shared_exception(err) from err
+        # 3) 예매대기 생성 (예매 기간, 금액, 1인 1건 규칙은 엔티티가 판단)
+        reservation = Reservation.create_pending(
+            ticketholder=TicketHolder(ticketholder_id=ticketholder_id),
+            performance=performance,
+            seat=seat,
+            has_active_reservation=has_active,
+            now=now,
+        )
 
         # 4) 저장 -> DB가 reserv_id 생성
         reservation = await self.repository.reserv_add(reservation)
@@ -140,16 +123,6 @@ class ReservationService:
         )
 
         return reservation
-
-    # 예매 도메인 예외 -> 팀 공통 예외(HTTP 상태 코드 반환)
-    def _to_shared_exception(self, error: ReservationError) -> SharedException :
-        if isinstance(error, ReservationForbiddenError) : 
-            return ForbiddenException(error.message, error_code=
-                                      error.error_code)
-        if isinstance(error, ReservationValidationError) :
-            return ValidationException(error.message, error_code=error.error_code)
-        return ConflictException(error.message, error_code=error.error_code)
-
 
     # 3. 결제 후 확정 : 예매대기(PENDING) → 예매확정(CONFIRMED)
     async def confirm(
@@ -165,11 +138,7 @@ class ReservationService:
         reservation = await self._get_reservation(reserv_id)
 
         # 2) 확정 (예매대기 상태인지는 엔터티가 판단)
-        try : 
-            reservation.confirm(ReservedPayment(reserved_pay_id=pay_id), now)
-
-        except ReservationError as err : 
-            raise self._to_shared_exception(err) from err
+        reservation.confirm(ReservedPayment(reserved_pay_id=pay_id), now)
 
         # 3) 상태 저장 (status, confirmed_at)
         await self.repository.reserv_status_update(reservation)
@@ -190,11 +159,7 @@ class ReservationService:
         reservation = await self._get_reservation(reserv_id)
 
         # 2) 예매 취소 (본인 확인·확정 상태·공연 시작 전인지는 엔티티가 판단)
-        try :
-            reservation.cancel(ticketholder_id, now)
-
-        except ReservationError as err : 
-            raise self._to_shared_exception(err) from err
+        reservation.cancel(ticketholder_id, now)
 
         # 3) 상태 저장 (status, canceled_at)
         await self.repository.reserv_status_update(reservation)
@@ -221,10 +186,7 @@ class ReservationService:
         reservation = await self._get_reservation(reserv_id)
 
         # 2) 본인 예매만 조회 (본인 확인은 엔티티가 판단)
-        try :
-            reservation.check_viewable(ticketholder_id)
-        except ReservationError as err :
-            raise self._to_shared_exception(err) from err
+        reservation.check_viewable(ticketholder_id)
 
         return reservation
 
