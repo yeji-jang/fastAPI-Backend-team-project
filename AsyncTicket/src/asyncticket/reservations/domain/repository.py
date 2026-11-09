@@ -10,6 +10,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 from asyncticket.reservations.domain.reservation import Reservation
+from asyncticket.reservations.domain.enums import ReservationStatus
 
 
 class ReservationRepository(ABC):
@@ -38,9 +39,12 @@ class ReservationRepository(ABC):
     @abstractmethod
     async def reserv_status_update(
         self,
-        reservation:Reservation) -> None :
-        """4) 예매 상태 변경(확정,취소,만료)을 저장"""
+        reservation:Reservation,
+        expected_status:ReservationStatus) -> bool :
+        """4) DB 상태가 expected_status일 때만 바뀐 상태(확정, 취소, 만료)를 저장
+              성공하면 True, 그 사이 다른 요청이 상태를 바꿨으면 False"""
         pass
+
 
     @abstractmethod
     async def find_pending_created_before(
