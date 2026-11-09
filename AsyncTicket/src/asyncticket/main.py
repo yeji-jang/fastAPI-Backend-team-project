@@ -1,7 +1,9 @@
 # FastAPI 앱 생성 + 라우터 등록 (팀 공용)
 
 # 함수를 "시작 → yield → 종료" 구조의 컨텍스트 매니저로 만들어 주는 데코레이터
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
+
 from typing import AsyncIterator
 
 from fastapi import FastAPI
@@ -23,6 +25,8 @@ from asyncticket.shared.presentation.catalog_http import register_catalog_errors
 from asyncticket.reservations.presentation.exception_handlers import register_reservation_errors
 from asyncticket.shows.presentation.router import router as show_router
 from asyncticket.wiring import wire_dependencies
+from asyncticket.wiring.reservations import run_reservation_expiry
+
 from asyncticket.venues.presentation.routers.v1.router import router as venue_router
 
 # auth_router, users_router는 FastAPI 앱에 등록할 라우터
@@ -40,6 +44,8 @@ logger = get_logger("app.main")
 # 서버 시작/종료 시 실행할 작업 정의
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    expiry_task = None
+
     try:
         logger.info("애플리케이션 시작, 모델 초기화 및 DB 스키마 확인 중...")
 
@@ -49,11 +55,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await conn.run_sync(Base.metadata.create_all)
 
         logger.info("애플리케이션 준비 완료")
+        expiry_task = asyncio.create_task(run_reservation_expiry())  # 예매 만료 작업 시작
+
         # ───────── 여기서 멈춰서 서버가 요청을 처리 ─────────
         yield
     finally:
         # 시작 실패 또는 요청 처리 중 예외가 있어도 DB 풀을 정리한다.
         logger.info("애플리케이션 종료 처리 중...")
+        if expiry_task is not None:   # 예매 만료 작업 정리
+            expiry_task.cancel() 
+            with suppress(asyncio.CancelledError):     
+                await expiry_task                        
         await close_db()
 
 
