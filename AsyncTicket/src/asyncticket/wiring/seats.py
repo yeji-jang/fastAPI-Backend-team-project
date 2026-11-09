@@ -21,7 +21,8 @@ def provide_seat_info_service() -> SeatInfoService:
 
 # 2) 같은 세션의 저장소와 권한 정책으로 서비스 구성
 def create_seat_info_service(
-    session: AsyncSession, policy: CatalogPolicy | None = None,
+    session: AsyncSession,
+    policy: CatalogPolicy | None = None,
 ) -> SeatInfoService:
     """등급 저장소·좌석 저장소·트랜잭션에 같은 세션을 주입한다."""
     return SeatInfoService(
@@ -33,7 +34,8 @@ def create_seat_info_service(
 
 # 3) 기본 주입 지점을 실제 서비스 생성 함수로 교체
 def wire_dependencies(
-    app: FastAPI, db_dependency: Callable[..., Any] | None = None,
+    app: FastAPI,
+    db_dependency: Callable[..., Any] | None = None,
 ) -> None:
     if db_dependency is None:
         from asyncticket.shared.core.database import get_db
@@ -42,12 +44,16 @@ def wire_dependencies(
 
     # 4) 요청 세션·앱 정책을 서비스 생성 함수에 전달
     def seat_info_service(
-        request: Request, session: Annotated[AsyncSession, Depends(db_dependency)],
+        request: Request,
+        session: Annotated[AsyncSession, Depends(db_dependency)],
     ) -> SeatInfoService:
         return create_seat_info_service(
-            session, getattr(request.app.state, "catalog_policy", CatalogPolicy()),
+            session,
+            getattr(request.app.state, "catalog_policy", CatalogPolicy()),
         )
 
-    app.dependency_overrides.update({
-        provide_seat_info_service: seat_info_service,
-    })
+    app.dependency_overrides.update(
+        {
+            provide_seat_info_service: seat_info_service,
+        }
+    )

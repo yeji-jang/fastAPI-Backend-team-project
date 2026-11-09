@@ -134,7 +134,8 @@ Claude Code 로그인 문제로 실제 Claude 모델 답변은 받지 못했다.
 - [등급 등록 초안](https://app.notion.com/p/19be0c9f801582549feb01bb40518059)
 - [별도 좌석 생성 초안](https://app.notion.com/p/0c3e0c9f80158295ba190182e246990d): 이번에는 사용자가 선택한 통합 생성 방식으로 대체.
 - [본인 예매 좌석 초안](https://app.notion.com/p/408e0c9f8015810199d4c7c6836a2b35)
-- [SQLAlchemy 트랜잭션](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html), [SQLite PK 타입](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#allowing-autoincrement-behavior-sqlalchemy-types-other-than-integer-integer)
+- [SQLAlchemy 트랜잭션](https://docs.sqlalchemy.org/en/20/orm/session_transaction.html),
+- [SQLite PK 타입](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#allowing-autoincrement-behavior-sqlalchemy-types-other-than-integer-integer)
 
 확인일: 2026-11-05. Notion 페이지들은 미확정 초안을 포함한다. 전체 구현은 기존 코드와 교안을 참고한 Codex 작성이며 튜터 원문 복제나 팀 승인 완료를 뜻하지 않는다.
 별도 생성 API와 available 파생값 대신 통합 생성·raw status를 사용했고, 본인 예매 응답에는 전체 금액의 의미를 명확히 하는 quantity를 포함했다.

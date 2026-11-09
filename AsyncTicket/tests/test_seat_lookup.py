@@ -1,6 +1,9 @@
 import unittest
 from unittest.mock import AsyncMock
-from asyncticket.seats.application.service import PerformanceSeatService, SeatReservationConflictError
+from asyncticket.seats.application.service import (
+    PerformanceSeatService,
+    SeatReservationConflictError,
+)
 from asyncticket.seats.domain.repository import PerformanceSeatRepository
 from asyncticket.shared.core.exceptions import ValidationException
 
@@ -9,8 +12,13 @@ class SeatLookupServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.repository = AsyncMock(spec=PerformanceSeatRepository)
         self.service = PerformanceSeatService(self.repository, AsyncMock())
-        self.values = dict(perf_id=1, perf_seat_id=2, reserv_id=3,
-                           expected_status="test-linked", released_status="test-free")
+        self.values = dict(
+            perf_id=1,
+            perf_seat_id=2,
+            reserv_id=3,
+            expected_status="test-linked",
+            released_status="test-free",
+        )
 
     async def test_invalid_lookup_ids_do_not_reach_repositories(self):
         self.service.seat_info_repository = AsyncMock()

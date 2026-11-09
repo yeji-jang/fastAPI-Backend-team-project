@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from asyncticket.seats.domain.performanc_seat import PerformanceSeat
+from asyncticket.seats.domain.performance_seat import PerformanceSeat
 from asyncticket.seats.domain.repository import (
     PerformanceSeatRepository,
     SeatInfoRepository,
@@ -73,6 +73,7 @@ class SqlAlchemySeatInfoRepository(SeatInfoRepository):
             model = await self.session.scalar(stmt)
             if model is None:
                 raise LookupError("저장할 좌석 등급이 없습니다.")
+            # DB의 기존 행과 다른 회차의 객체로 덮어쓰지 않도록 저장 경계에서 방어한다.
             if model.perf_id != seat_info.perf_id:
                 raise ValueError("저장된 좌석 등급의 회차는 변경할 수 없습니다.")
             model.name = seat_info.name
@@ -149,13 +150,13 @@ class SqlAlchemySeatInfoRepository(SeatInfoRepository):
         await self.session.rollback()
 
 
-
 class SqlAlchemyPerformanceSeatRepository(PerformanceSeatRepository):
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     # 1) 개별 좌석 INSERT → flush
     async def save_many(self, seats: list[PerformanceSeat]) -> None:
+        """신규 좌석만 INSERT한다. 기존 좌석의 수정·재삽입은 지원하지 않는다."""
         if any(seat.perf_seat_id is not None for seat in seats):
             raise ValueError("좌석 목록 저장은 신규 좌석만 지원합니다.")
         self.session.add_all(
@@ -300,12 +301,16 @@ class SqlAlchemyPerformanceSeatRepository(PerformanceSeatRepository):
 
     # 8) 회차·좌석 PK SELECT → 한 건 또는 None
     async def get_performance_seat_by_id(
-        self, perf_id: int, perf_seat_id: int,
+        self,
+        perf_id: int,
+        perf_seat_id: int,
     ) -> dict[str, object] | None:
-        result = await self.session.execute(self._seats().where(
-            SeatsInfoModel.perf_id == perf_id,
-            PerformanceSeats.perf_seat_id == perf_seat_id,
-        ))
+        result = await self.session.execute(
+            self._seats().where(
+                SeatsInfoModel.perf_id == perf_id,
+                PerformanceSeats.perf_seat_id == perf_seat_id,
+            )
+        )
         row = result.mappings().one_or_none()
         return dict(row) if row else None
 
@@ -327,12 +332,16 @@ class SqlAlchemyPerformanceSeatRepository(PerformanceSeatRepository):
                 PerformanceSeats.reserv_id == reserv_id,
                 PerformanceSeats.status == expected_status,
                 PerformanceSeats.seat_id2.in_(
-                    select(SeatsInfoModel.seat_id).where(SeatsInfoModel.perf_id == perf_id)
+                    select(SeatsInfoModel.seat_id).where(
+                        SeatsInfoModel.perf_id == perf_id
+                    )
                 ),
-                select(reservations.c.reserv_id).where(
+                select(reservations.c.reserv_id)
+                .where(
                     reservations.c.reserv_id == reserv_id,
                     reservations.c.perf_id == perf_id,
-                ).exists(),
+                )
+                .exists(),
             )
             .values(reserv_id=None, status=released_status)
             .returning(PerformanceSeats.perf_seat_id)
