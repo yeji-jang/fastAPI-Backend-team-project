@@ -46,12 +46,26 @@ class ReservationError(Exception):
 class ReservationValidationError(ReservationError):
     """
     값이 예매 규칙에 맞지 않을때 발생되는 오류
-    - 좌석선택을 1을 초과
-    - 금액이 0보다 작음
+    - 좌석 선택 수량이 1을 초과
+    - 좌석 금액이 0보다 작음
+    - 바뀔 HTTP 상태 : 422
     """
 
 class ReservationForbiddenError(ReservationError):
-    """본인 예매가 아님을 알리는 오류"""
+    """
+    본인 예매가 아님을 알리는 오류
+    - 바뀔 HTTP 상태 : 403
+    """
+
+
+class ReservationNotFoundError(ReservationError):
+    """
+    찾는 대상이 없음
+    - 예매 없음
+    - 회차 없음
+    - 해당 회차의 좌석 없음
+    - 바뀔 HTTP 상태 : 404
+    """
 
 class ReservationConflictError(ReservationError):
     """
@@ -61,6 +75,7 @@ class ReservationConflictError(ReservationError):
     - 예매대기 상태가 아님 (확정 불가)
     - 확정된 예매가 아님 (취소 불가)
     - 공연이 시작됨
+    - 바뀔 HTTP 상태 : 409
     """
 
 # 2. VO(Value Object)

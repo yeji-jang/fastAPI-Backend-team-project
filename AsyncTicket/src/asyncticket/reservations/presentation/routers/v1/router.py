@@ -14,8 +14,12 @@ from typing import Annotated
 
 
 # 라우터 작업 초기세팅
-from fastapi import APIRouter, HTTPException, status, Path, Header, Body, Depends
-
+from fastapi import (
+    APIRouter, # 라우터 객체 만들기 
+    status,    # status.HTTP_201_CREATED 같은 상태 코드 이름
+    Path,      # 주소 안의 값({reserv_id}) 검사
+    Depends    # 의존성 주입
+    )
 
 from asyncticket.auth.presentation.dependencies import get_current_user
 from asyncticket.users.domain.users import User
@@ -44,17 +48,19 @@ Service = Annotated[ReservationService, Depends(provide_reservation_service)]
     description="로그인한 회원이 좌석 1개를 선택하면 예매대기(PENDING)로 생성되고 좌석이 선점되고, 결제 성공 후 확정")
 
 async def create_reservation(
-    request : ReservationCreateRequest,
-    current_user : CurrentUser,
-    service : Service,
+    request : ReservationCreateRequest,  # 요청 JSON (스키마가 검사)
+    current_user : CurrentUser,          # 로그인 회원 (토큰에서)
+    service : Service,                   # 예매 서비스 (wiring이 조립)
 ) -> APIResponse[ReservationResponse]:
 
+    # 서비스 호출 : 예매자는 토큰의 회원, 회차/좌석은 요청 JSON에서
     reservation = await service.reserve(
         ticketholder_id = current_user.user_id,
         perf_id = request.perf_id,
         perf_seat_id = request.perf_seat_id
     )
 
+    # from_entity(엔티티 → 응답 스키마) → APIResponse.ok(팀 공통 형식)
     return APIResponse.ok(
         data=ReservationResponse.from_entity(reservation),
         message="예매가 생성되었습니다. 결제를 진행해 주세요.",
@@ -128,3 +134,4 @@ async def cancel_reservation(
         message="예매가 취소되었습니다",
         code="RESERVATION_CANCELED"
     )
+
