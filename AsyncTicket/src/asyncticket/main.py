@@ -32,6 +32,7 @@ from asyncticket.auth.presentation.routers.v1.router import (
 from asyncticket.users.presentation.router.v1.router import (
     router as users_router,
 )
+from asyncticket.payment.presentation.routers.v1.router import router as payment_router
 
 # 이 파일에서 사용할 로거 (로그에 "app.main"이라는 이름으로 표시됨)
 logger = get_logger("app.main")
@@ -87,6 +88,8 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(seat_router)
+    # 결제 관련 라우터
+    app.include_router(payment_router)
     register_middlewares(app)
     return app
 
