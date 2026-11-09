@@ -4,11 +4,14 @@
         1) 예매를 저장 (예매생성은 reservation.py-Reservation에서)
         2) 예매 ID로 찾고
         3) 회원의 예매 목록을 찾고
-        4) 바뀐 상태(취소, 확정)를 저장
+        4) 바뀐 상태(취소, 확정, 만료)를 저장
+        5) 만료 대상 예매대기 목록을 찾는다
     - commit은 하지 않는다 : 
         - 요청이 끝날 때 get_db가 commit
         - 예매 저장 → 좌석 연결 → 결제 처리를 한 트랜잭션으로 묶기 위해 flush만 한다
 """
+from datetime import datetime
+
 # <sqlalchemy>
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -122,6 +125,26 @@ class SqlAlchemyReservationRepository(ReservationRepository):
 
         # ③ UPDATE만 보내기 (commit은 get_db가 함)
         await self.session.flush()
+
+
+    # 5) 만료 대상 예매대기 목록을 찾고
+    async def find_pending_created_before(self,
+                                          before : datetime) -> list[Reservation] :
+        """5) before 이전에 생성된 예매대기(PENDING) 목록찾기, 없으면 빈리스트[]"""
+        # ① SQL 문장 조립 : 예매대기 상태 + 생성 시각이 before 이전
+        statement = (
+            self._select_reservations()
+            .where(
+                ReservationModel.status == ReservationStatus.PENDING.value,
+                ReservationModel.created_at <= before,
+            )
+        )
+
+        # ② DB에서 실행
+        result = await self.session.execute(statement)
+
+        # ③ 줄마다 엔티티로 변환
+        return [self._to_entity(row) for row in result.all()]
 
 
     # ----------조회(select)를 도와주는 함수 구현----------
