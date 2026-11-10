@@ -5,21 +5,26 @@ from fastapi import Depends, FastAPI, Request
 
 from asyncticket.auth.application.service import AuthApplicationService
 from asyncticket.auth.domain.repository import TokenBlacklistRepository
+from asyncticket.auth.domain.service import AuthAccountReader
 from asyncticket.shared.core.exceptions import UnauthorizedException
 from asyncticket.shared.domain.catalog import (
     AuthenticationRequiredError, CatalogActor, CatalogAuthenticator, CatalogIntegrationError,
 )
 from asyncticket.shared.presentation.catalog_auth import provide_catalog_authenticator
-from asyncticket.users.domain.repository import UserRepository
 from asyncticket.users.domain.service import PasswordHasher
-from asyncticket.wiring.auth import get_blacklist_repository, get_token_provider
-from asyncticket.wiring.users import get_password_hasher, get_user_repository
+from asyncticket.wiring.auth import (
+    get_auth_account_reader,
+    get_blacklist_repository,
+    get_token_provider,
+)
+from asyncticket.wiring.users import get_password_hasher
 
 
 class AuthServiceCatalogAuthenticator:
-    def __init__(self, users: UserRepository, blacklist: TokenBlacklistRepository,
+    def __init__(self, account_reader: AuthAccountReader,
+                 blacklist: TokenBlacklistRepository,
                  hasher: PasswordHasher) -> None:
-        self.users = users
+        self.account_reader = account_reader
         self.blacklist = blacklist
         self.hasher = hasher
 
@@ -29,7 +34,12 @@ class AuthServiceCatalogAuthenticator:
             provider = get_token_provider()
         except (RuntimeError, ValueError) as exc:
             raise CatalogIntegrationError("공통 인증 설정이 필요합니다.") from exc
-        service = AuthApplicationService(self.users, self.blacklist, provider, self.hasher)
+        service = AuthApplicationService(
+            self.account_reader,
+            self.blacklist,
+            provider,
+            self.hasher,
+        )
         try:
             user = await service.authenticate(token)
         except UnauthorizedException as exc:
@@ -41,14 +51,14 @@ class AuthServiceCatalogAuthenticator:
 
 def create_catalog_authenticator(
     request: Request,
-    users: Annotated[UserRepository, Depends(get_user_repository)],
+    account_reader: Annotated[AuthAccountReader, Depends(get_auth_account_reader)],
     blacklist: Annotated[TokenBlacklistRepository, Depends(get_blacklist_repository)],
     hasher: Annotated[PasswordHasher, Depends(get_password_hasher)],
 ) -> CatalogAuthenticator:
     configured = request.app.state.catalog_authenticator
     if configured is not None:
         return configured
-    return AuthServiceCatalogAuthenticator(users, blacklist, hasher)
+    return AuthServiceCatalogAuthenticator(account_reader, blacklist, hasher)
 
 
 def wire_dependencies(app: FastAPI) -> None:

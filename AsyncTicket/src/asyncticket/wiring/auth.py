@@ -122,15 +122,20 @@ async def get_current_user(
             error_code="AUTHENTICATION_REQUIRED",
         )
 
-    identity = await auth_service.authenticate(
+    payload = await auth_service.get_authenticated_payload(
         credentials.credentials
     )
 
-    user = await user_repository.find_by_id(identity.user_id)
+    user = await user_repository.find_by_id(payload.user_id)
     if user is None:
         raise UnauthorizedException(
             message="존재하지 않는 회원입니다.",
             error_code="USER_NOT_FOUND",
+        )
+    if user.is_withdrawn:
+        raise UnauthorizedException(
+            message="탈퇴한 회원은 이용할 수 없습니다.",
+            error_code="USER_ALREADY_WITHDRAWN",
         )
     return user
 

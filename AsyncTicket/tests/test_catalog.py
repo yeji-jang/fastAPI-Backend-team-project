@@ -482,26 +482,36 @@ class CatalogApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_login_jwt_drives_catalog_authentication_and_current_permissions(self) -> None:
         from types import SimpleNamespace
         from asyncticket.auth.application.service import AuthApplicationService
+        from asyncticket.auth.domain.service import AuthAccount, AuthRole
         from asyncticket.auth.infrastructure.security import JwtTokenProvider
-        from asyncticket.users.domain.users import UserRole
-        from asyncticket.wiring.auth import get_auth_service, get_blacklist_repository
-        from asyncticket.wiring.users import get_user_repository, get_password_hasher
+        from asyncticket.wiring.auth import (
+            get_auth_account_reader,
+            get_auth_service,
+            get_blacklist_repository,
+        )
+        from asyncticket.wiring.users import get_password_hasher
 
-        user = SimpleNamespace(user_id=1, role=UserRole.SELLER, is_withdrawn=False,
-                               password_hash="hashed")
-        users = SimpleNamespace(find_by_id=AsyncMock(return_value=user),
-                                find_by_email=AsyncMock(return_value=user))
+        account = AuthAccount(
+            user_id=1,
+            role=AuthRole.SELLER,
+            password_hash="hashed",
+            is_withdrawn=False,
+        )
+        account_reader = SimpleNamespace(
+            find_by_id=AsyncMock(return_value=account),
+            find_by_email=AsyncMock(return_value=account),
+        )
         blacklist = SimpleNamespace(exists=AsyncMock(return_value=False))
         hasher = SimpleNamespace(verify=lambda **kwargs: True)
         app = create_app()
         app.dependency_overrides.update(self.app.dependency_overrides)
-        app.dependency_overrides[get_user_repository] = lambda: users
+        app.dependency_overrides[get_auth_account_reader] = lambda: account_reader
         app.dependency_overrides[get_blacklist_repository] = lambda: blacklist
         app.dependency_overrides[get_password_hasher] = lambda: hasher
 
         with patch.dict("os.environ", {"JWT_SECRET_KEY": "catalog-integration-test-secret-32bytes"}):
             provider = JwtTokenProvider()
-            service = AuthApplicationService(users, blacklist, provider, hasher)
+            service = AuthApplicationService(account_reader, blacklist, provider, hasher)
             app.dependency_overrides[get_auth_service] = lambda: service
             status, _, result = await asgi_request(
                 app, "POST", "/v1/auth/login",
@@ -519,19 +529,22 @@ class CatalogApiTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(status, 200, result)
 
             # 같은 JWT를 재사용해도 DB의 현재 권한과 소유권이 적용된다.
-            for role, user_id in ((UserRole.BUYER, 1), (UserRole.SELLER, 999)):
-                user.role, user.user_id = role, user_id
+            for role, user_id in ((AuthRole.BUYER, 1), (AuthRole.SELLER, 999)):
+                account = AuthAccount(user_id, role, "hashed", False)
+                account_reader.find_by_id.return_value = account
                 for path, body in writes:
                     status, _, result = await catalog_request(app, "PATCH", path, body, token)
                     self.assertEqual(status, 403, result)
-            user.role, user.user_id = UserRole.ADMIN, 999
+            account = AuthAccount(999, AuthRole.ADMIN, "hashed", False)
+            account_reader.find_by_id.return_value = account
             for path, body in writes:
                 status, _, result = await catalog_request(app, "PATCH", path, body, token)
                 self.assertEqual(status, 200, result)
 
-            user.role, user.user_id = UserRole.SELLER, 1
-            expired = JwtTokenProvider(access_token_minutes=-1).issue_access_token(1, UserRole.SELLER).access_token
-            wrong_signature = JwtTokenProvider(secret_key="another-integration-test-secret-32bytes").issue_access_token(1, UserRole.SELLER).access_token
+            account = AuthAccount(1, AuthRole.SELLER, "hashed", False)
+            account_reader.find_by_id.return_value = account
+            expired = JwtTokenProvider(access_token_minutes=-1).issue_access_token(1, AuthRole.SELLER).access_token
+            wrong_signature = JwtTokenProvider(secret_key="another-integration-test-secret-32bytes").issue_access_token(1, AuthRole.SELLER).access_token
             for invalid in ("malformed", expired, wrong_signature):
                 for path, body in writes:
                     status, headers, result = await catalog_request(app, "PATCH", path, body, invalid)
@@ -550,8 +563,11 @@ class CatalogApiTests(unittest.IsolatedAsyncioTestCase):
 
             for state in ("revoked", "withdrawn", "missing"):
                 blacklist.exists.return_value = state == "revoked"
-                user.is_withdrawn = state == "withdrawn"
-                users.find_by_id.return_value = None if state == "missing" else user
+                account_reader.find_by_id.return_value = (
+                    None
+                    if state == "missing"
+                    else AuthAccount(1, AuthRole.SELLER, "hashed", state == "withdrawn")
+                )
                 for path, body in writes:
                     status, _, result = await catalog_request(app, "PATCH", path, body, token)
                     self.assertEqual(status, 401, (state, result))

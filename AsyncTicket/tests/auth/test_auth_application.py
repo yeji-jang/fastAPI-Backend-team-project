@@ -1,5 +1,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from asyncticket.auth.application.service import (
     AuthApplicationService,
@@ -9,6 +11,8 @@ from asyncticket.auth.domain.entities import (
 )
 from asyncticket.auth.domain.service import (
     AccessTokenPayload,
+    AuthAccount,
+    AuthRole,
 )
 from asyncticket.auth.infrastructure.security import JwtTokenProvider
 from asyncticket.shared.core.exceptions import (
@@ -18,6 +22,7 @@ from asyncticket.users.domain.users import (
     User,
     UserRole,
 )
+from asyncticket.wiring.auth import get_current_user
 
 
 class FakePasswordHasher:
@@ -32,26 +37,21 @@ class FakePasswordHasher:
         return hashed_password == f"hashed:{raw_password}"
 
 
-class FakeUserRepository:
-    def __init__(self, user: User):
-        self.user = user
+class FakeAuthAccountReader:
+    def __init__(self, account: AuthAccount):
+        self.account = account
 
     async def find_by_id(self, user_id: int):
-        if self.user.user_id == user_id:
-            return self.user
+        if self.account.user_id == user_id:
+            return self.account
 
         return None
 
     async def find_by_email(self, email: str):
-        if self.user.email == email:
-            return self.user
+        if email == "test@example.com":
+            return self.account
 
         return None
-
-    async def save(self, user: User):
-        self.user = user
-        return user
-
 
 class FakeBlacklistRepository:
     def __init__(self):
@@ -72,7 +72,7 @@ class FakeTokenProvider:
         self.payload = AccessTokenPayload(
             access_token="fake-token",
             user_id=1,
-            role=UserRole.BUYER,
+            role=AuthRole.BUYER,
             jti="fake-jti",
             expires_at=(
                 datetime.now(timezone.utc)
@@ -110,8 +110,13 @@ class AuthApplicationTests(
             phone_number="010-1234-5678",
         )
 
-        self.user_repository = FakeUserRepository(
-            self.user
+        self.account_reader = FakeAuthAccountReader(
+            AuthAccount(
+                user_id=self.user.user_id,
+                role=AuthRole.BUYER,
+                password_hash=self.user.password_hash,
+                is_withdrawn=self.user.is_withdrawn,
+            )
         )
         self.blacklist_repository = (
             FakeBlacklistRepository()
@@ -120,7 +125,7 @@ class AuthApplicationTests(
         self.password_hasher = FakePasswordHasher()
 
         self.service = AuthApplicationService(
-            account_reader=self.user_repository,
+            account_reader=self.account_reader,
             token_blacklist_repository=(
                 self.blacklist_repository
             ),
@@ -181,7 +186,7 @@ class AuthApplicationTests(
             role=UserRole.BUYER,
         )
         service = AuthApplicationService(
-            account_reader=self.user_repository,
+            account_reader=self.account_reader,
             token_blacklist_repository=self.blacklist_repository,
             token_provider=token_provider,
             password_verifier=self.password_hasher,
@@ -203,7 +208,7 @@ class AuthApplicationTests(
             + ("a" if token_payload.access_token[-1] != "a" else "b")
         )
         service = AuthApplicationService(
-            account_reader=self.user_repository,
+            account_reader=self.account_reader,
             token_blacklist_repository=self.blacklist_repository,
             token_provider=token_provider,
             password_verifier=self.password_hasher,
@@ -211,6 +216,35 @@ class AuthApplicationTests(
 
         with self.assertRaises(UnauthorizedException):
             await service.authenticate(tampered_token)
+
+    async def test_current_user_reads_user_once_and_rejects_withdrawn_user(self):
+        auth_service = SimpleNamespace(
+            get_authenticated_payload=AsyncMock(
+                return_value=self.token_provider.payload,
+            ),
+        )
+        user_repository = SimpleNamespace(
+            find_by_id=AsyncMock(return_value=self.user),
+        )
+        credentials = SimpleNamespace(credentials="fake-token")
+
+        result = await get_current_user(
+            credentials,
+            auth_service,
+            user_repository,
+        )
+
+        self.assertIs(result, self.user)
+        auth_service.get_authenticated_payload.assert_awaited_once_with(
+            "fake-token"
+        )
+        user_repository.find_by_id.assert_awaited_once_with(1)
+
+        self.user.deleted_at = datetime.now(timezone.utc)
+        with self.assertRaises(UnauthorizedException) as context:
+            await get_current_user(credentials, auth_service, user_repository)
+        self.assertEqual(context.exception.error_code, "USER_ALREADY_WITHDRAWN")
+        self.assertEqual(user_repository.find_by_id.await_count, 2)
 
 
 if __name__ == "__main__":
