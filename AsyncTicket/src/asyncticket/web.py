@@ -18,6 +18,11 @@ async def home(request: Request):
     return templates.TemplateResponse(request, "Home.html")
 
 
+@router.get("/dashboard")
+async def dashboard(request: Request):
+    return templates.TemplateResponse(request, "dashboard.html")
+
+
 @router.get("/login")
 async def login(request: Request):
     return templates.TemplateResponse(request, "login.html")
