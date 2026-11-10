@@ -220,6 +220,17 @@ class SqlAlchemyPerformanceSeatRepository(PerformanceSeatRepository):
         result = await self.session.execute(stmt)
         return [dict(row) for row in result.mappings()]
 
+    # 캐시 조회에서도 현재 상태는 DB에서 필요한 두 컬럼만 읽는다.
+    async def list_performance_seat_states(self, perf_id: int) -> list[dict[str, object]]:
+        stmt = (
+            select(PerformanceSeats.perf_seat_id, PerformanceSeats.status)
+            .join(SeatsInfoModel, PerformanceSeats.seat_id2 == SeatsInfoModel.seat_id)
+            .where(SeatsInfoModel.perf_id == perf_id)
+            .order_by(PerformanceSeats.perf_seat_id)
+        )
+        result = await self.session.execute(stmt)
+        return [dict(row) for row in result.mappings()]
+
     # 5) 좌석명 SELECT → 중복 검사 → 반환
     async def get_performance_seat(
         self, perf_id: int, seat_seq: str

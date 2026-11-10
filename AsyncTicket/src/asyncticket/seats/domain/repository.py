@@ -70,6 +70,13 @@ class SeatInfoRepository(ABC):
 
 
 class PerformanceSeatRepository(ABC):
+    async def list_performance_seat_states(self, perf_id: int) -> list[dict[str, object]]:
+        """상태 조회의 기본 계약. DB 구현에서는 필요한 두 컬럼만 조회한다."""
+        return [
+            {"perf_seat_id": item["perf_seat_id"], "status": item["status"]}
+            for item in await self.list_performance_seats(perf_id)
+        ]
+
     # 1) 개별 좌석 여러 건 저장
     @abstractmethod
     async def save_many(self, seats: list[PerformanceSeat]) -> None:

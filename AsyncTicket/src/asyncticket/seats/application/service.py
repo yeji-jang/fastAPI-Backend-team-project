@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from asyncticket.seats.application.ports import SeatListCache
 from asyncticket.seats.domain.repository import (
     PerformanceSeatRepository,
     SeatInfoRepository,
@@ -35,10 +36,12 @@ class SeatInfoService:
         repository: SeatInfoRepository,
         performance_seat_repository: PerformanceSeatRepository,
         policy: CatalogPolicy,
+        seat_list_cache: SeatListCache | None = None,
     ) -> None:
         self.repository = repository
         self.performance_seat_repository = performance_seat_repository
         self.policy = policy
+        self.seat_list_cache = seat_list_cache
 
     async def get_seat_info(self, seat_id: int) -> SeatInfo:
         seat_info = await self.repository.get_seat_info(seat_id)
@@ -94,10 +97,13 @@ class SeatInfoService:
                 saved_grade.create_seats(names)
             )
             await self.repository.commit()
-            return saved_grade
         except BaseException:
             await self.repository.rollback()
             raise
+        # DB 확정 이후 삭제한다. 캐시 장애로 이미 확정한 DB를 rollback하지 않는다.
+        if self.seat_list_cache is not None:
+            await self.seat_list_cache.invalidate(perf_id)
+        return saved_grade
 
     async def update_price(
         self,
@@ -113,10 +119,12 @@ class SeatInfoService:
             changed = current.update_price(price, perf_id=perf_id)
             saved_grade = await self.repository.save_seat_info(changed)
             await self.repository.commit()
-            return saved_grade
         except BaseException:
             await self.repository.rollback()
             raise
+        if self.seat_list_cache is not None:
+            await self.seat_list_cache.invalidate(perf_id)
+        return saved_grade
 
 
 class PerformanceSeatService:
@@ -126,9 +134,11 @@ class PerformanceSeatService:
         self,
         repository: PerformanceSeatRepository,
         seat_info_repository: SeatInfoRepository,
+        seat_list_cache: SeatListCache | None = None,
     ) -> None:
         self.repository = repository
         self.seat_info_repository = seat_info_repository
+        self.seat_list_cache = seat_list_cache
 
     async def _require_performance(self, perf_id: int) -> None:
         if not await self.seat_info_repository.performance_exists(perf_id):
@@ -136,7 +146,21 @@ class PerformanceSeatService:
 
     async def list_performance_seats(self, perf_id: int) -> list[dict[str, object]]:
         await self._require_performance(perf_id)
-        return await self.repository.list_performance_seats(perf_id)
+        if self.seat_list_cache is not None:
+            cached = await self.seat_list_cache.get(perf_id)
+            if cached is not None:
+                current = await self.repository.list_performance_seat_states(perf_id)
+                states = {item["perf_seat_id"]: item["status"] for item in current}
+                # 생성·삭제로 목록이 바뀌었으면 DB에서 전체 정보를 다시 읽는다.
+                if {item["perf_seat_id"] for item in cached} == set(states):
+                    return [
+                        {**item, "status": states[item["perf_seat_id"]]}
+                        for item in cached
+                    ]
+        seats = await self.repository.list_performance_seats(perf_id)
+        if self.seat_list_cache is not None:
+            await self.seat_list_cache.set(perf_id, seats)
+        return seats
 
     async def get_seat_info(self, perf_id: int, seat_id: int) -> dict[str, object]:
         grade = await self.seat_info_repository.get_seat_info_view(perf_id, seat_id)

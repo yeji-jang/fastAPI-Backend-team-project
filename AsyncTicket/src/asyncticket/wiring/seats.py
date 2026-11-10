@@ -7,6 +7,8 @@ from fastapi import Depends, FastAPI, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from asyncticket.seats.application.service import SeatInfoService
+from asyncticket.seats.application.ports import SeatListCache
+from asyncticket.wiring.performance_seats import provide_seat_list_cache
 from asyncticket.shared.domain.catalog import CatalogPolicy
 from asyncticket.seats.infrastructure.repositories import (
     SqlAlchemyPerformanceSeatRepository,
@@ -23,12 +25,15 @@ def provide_seat_info_service() -> SeatInfoService:
 def create_seat_info_service(
     session: AsyncSession,
     policy: CatalogPolicy | None = None,
+    *,
+    seat_list_cache: SeatListCache | None = None,
 ) -> SeatInfoService:
     """등급 저장소·좌석 저장소·트랜잭션에 같은 세션을 주입한다."""
     return SeatInfoService(
         repository=SqlAlchemySeatInfoRepository(session),
         performance_seat_repository=SqlAlchemyPerformanceSeatRepository(session),
         policy=policy if policy is not None else CatalogPolicy(),
+        seat_list_cache=seat_list_cache,
     )
 
 
@@ -46,10 +51,12 @@ def wire_dependencies(
     def seat_info_service(
         request: Request,
         session: Annotated[AsyncSession, Depends(db_dependency)],
+        cache: Annotated[SeatListCache | None, Depends(provide_seat_list_cache)],
     ) -> SeatInfoService:
         return create_seat_info_service(
             session,
             getattr(request.app.state, "catalog_policy", CatalogPolicy()),
+            seat_list_cache=cache,
         )
 
     app.dependency_overrides.update(
