@@ -46,6 +46,8 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
             "style.css",
             "account.js",
             "booking.js",
+            "my_reservations.js",
+            "my_reservations.css",
             "app.js",
             "after-hours.jpg",
         ]:
