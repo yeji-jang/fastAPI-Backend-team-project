@@ -18,6 +18,7 @@ from asyncticket.reservations.infrastructure.services import (
     SqlAlchemyReservedSeatReader,
 )
 from asyncticket.reservations.infrastructure.adapter_seat_allocation import SeatAllocationAdapter
+from asyncticket.reservations.infrastructure.adapter_payment_refund import PaymentRefundAdapter
 from asyncticket.wiring.performance_seats import create_performance_seat_service
 
 from asyncticket.shared.core.logger import get_logger
@@ -40,7 +41,15 @@ def create_reservation_service(session: AsyncSession) -> ReservationService:
         performance_reader=SqlAlchemyReservedPerformanceReader(session),
         seat_reader=SqlAlchemyReservedSeatReader(session),
         seat_allocation=SeatAllocationAdapter(create_performance_seat_service(session)),
+        payment_refund=PaymentRefundAdapter(lambda: _create_payment_service(session))
     )
+
+# 2-1) 같은 세션으로 결제 서비스 만들기 (환불할 때만 호출)
+# - wiring/payment.py가 이 파일을 import하므로, 서로 import하지 않도록 함수 안에서 import한다
+def _create_payment_service(session : AsyncSession) :
+    # 환불할때 import 
+    from asyncticket.wiring.payment import create_payment_service
+    return create_payment_service(session)
 
 
 # 3) 기본 주입 지점을 실제 서비스 생성 함수로 교체
