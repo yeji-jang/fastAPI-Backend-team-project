@@ -1,0 +1,57 @@
+{% extends "catalog_base.html" %}
+{% block title %}기능 대시보드{% endblock %}
+{% block head %}
+{% include "catalog_detail_styles.html" %}
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='dashboard.css').path }}">
+{% endblock %}
+{% block content %}
+<div class="dashboard detail-page">
+    <header class="detail-header">
+        <p class="detail-kicker">ASYNC TICKET / SERVICE DIRECTORY</p>
+        <h1>기능 대시보드</h1>
+        <p>구현된 화면을 도메인별로 찾아보고, 실제 데이터로 서비스 흐름을 확인하세요.</p>
+        <p class="dashboard-flow">회원가입 → 로그인 → 공연·회차 선택 → 좌석 선택 → 예매 → 결제 → 내 예매</p>
+    </header>
+    <p class="dashboard-note">이 페이지는 화면 안내입니다. 로그인과 권한 검사는 각 화면과 기존 API에서 수행합니다. 결제·취소·탈퇴는 해당 화면에서 내용을 확인한 뒤 진행하세요.</p>
+    <div class="dashboard-grid">
+    {% set sections = [
+        ('01', '회원·인증', '계정 생성과 로그인, 내 정보 및 비밀번호 관리', [('/signup','회원가입','공개'),('/login','로그인','공개'),('/me','내 정보·비밀번호 변경·탈퇴','로그인')]),
+        ('02', '공연장', '공연장 목록과 주소·상세 정보', [('/venues','공연장 목록','공개'),('/manage/edit#venue-management','공연장 등록·수정','관리 권한')]),
+        ('03', '공연·회차', '공연을 선택하면 회차와 예매 기간을 확인할 수 있습니다.', [('/shows','공연 목록·상세·회차 선택','공개'),('/manage','공연·회차·좌석 통합 관리','관리 권한'),('/manage/edit#show-management','공연 등록·수정','관리 권한'),('/manage/edit#performance-management','회차 등록·수정','관리 권한')]),
+        ('04', '좌석', '공연 상세에서 회차를 선택해 좌석표로 이동합니다.', [('/shows','공연부터 좌석표 찾기','공개'),('/manage/edit#seat-management','좌석 구성·등급 가격 관리','관리 권한')]),
+        ('05', '예매', '본인 예매와 연결된 좌석·현재 상태를 조회합니다.', [('/me/reservations','내 예매·상세·취소','구매자'),('/reservations','좌석 예매 안내 (좌석 선택 후 진행)','구매자')]),
+        ('06', '결제', '내 예매의 결제 이어하기에서 결제 확인 화면과 토스 결제로 이동합니다.', [('/me/reservations','결제 이어하기·결제 상태 확인','구매자')])
+    ] %}
+    {% for number, title, description, links in sections %}
+        <section class="dashboard-card">
+            <span class="dashboard-number">{{ number }}</span>
+            <h2>{{ title }}</h2><p>{{ description }}</p>
+            <ul>{% for href, label, permission in links %}
+                <li><a href="{{ href }}">{{ label }} <span aria-hidden="true">↗</span></a><small>{{ permission }}</small></li>
+            {% endfor %}</ul>
+        </section>
+    {% endfor %}
+    </div>
+    <section class="dashboard-tools" aria-labelledby="direct-title">
+        <h2 id="direct-title">ID로 상세 화면 열기</h2>
+        <p>실제로 존재하는 ID를 입력하세요. 결제 확인은 본인 예매만 조회할 수 있습니다.</p>
+        <form id="dashboard-direct" novalidate>
+            <label>화면<select name="page"><option value="venues">공연장 상세 (공연장 ID)</option><option value="shows">공연 상세 (공연 ID)</option><option value="performances">회차·좌석표 (회차 ID)</option><option value="checkout">결제 확인 (예매 ID)</option></select></label>
+            <label>데이터 ID<input name="record_id" type="text" inputmode="numeric" pattern="[1-9][0-9]*" required autocomplete="off" placeholder="예: 1"></label>
+            <button type="submit">화면 열기 ↗</button>
+            <p id="dashboard-direct-status" role="status"></p>
+        </form>
+    </section>
+    <section class="dashboard-tools">
+        <h2>관리자 예매·결제 조회</h2>
+        <p><strong>화면 준비 · API 미연결</strong> — 전체 회원 예매·결제 조회는 관리자 API가 제공된 뒤 연결할 수 있습니다.</p>
+        <a class="dashboard-button" href="/manage/bookings">관리자 조회 화면 보기 ↗</a>
+    </section>
+    <section class="dashboard-tools">
+        <h2>API 명세와 결제 결과</h2>
+        <p><a href="/docs">Swagger API 명세 ↗</a> · <a href="/redoc">ReDoc API 명세 ↗</a></p>
+        <p>결제 성공·실패 화면은 토스 콜백 전용입니다. 임의로 성공 화면을 여는 것으로 결제가 완료되지는 않습니다.</p>
+    </section>
+</div>
+{% endblock %}
+{% block script %}<script src="{{ url_for('venue_assets', path='dashboard.js').path }}" defer></script>{% endblock %}

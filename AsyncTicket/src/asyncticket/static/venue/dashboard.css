@@ -1,0 +1,23 @@
+/* 기존 흑백 화면과 동일한 직사각형 구성. */
+.dashboard { max-width: 1200px; }
+.dashboard h1 { font-size: clamp(2.7rem, 7vw, 5.4rem); }
+.dashboard-flow { border-top: var(--line); padding-top: 1rem; font-weight: 700; }
+.dashboard-note { color: #555; font-size: .9rem; margin: 1.5rem 0; }
+.dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: var(--line); border-left: var(--line); }
+.dashboard-card { padding: 1.4rem; border-right: var(--line); border-bottom: var(--line); }
+.dashboard-number { font: 700 .8rem monospace; }
+.dashboard-card h2 { margin: .7rem 0; border: 0; padding: 0; }
+.dashboard-card p { color: #555; min-height: 3rem; }
+.dashboard-card ul { list-style: none; padding: 0; margin: 0; }
+.dashboard-card li { border-top: 1px solid #ccc; padding: .7rem 0; display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.dashboard-card a { font-weight: 700; }
+.dashboard-card small { white-space: nowrap; color: #555; }
+.dashboard-tools { margin-top: 2rem; }
+.dashboard-tools form { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
+.dashboard-tools label { display: grid; gap: .4rem; flex: 1 1 12rem; }
+.dashboard-tools input, .dashboard-tools select, .dashboard-tools button, .dashboard-button { padding: .8rem 1rem; border: var(--line); font: inherit; }
+.dashboard-tools input, .dashboard-tools select { width: 100%; background: white; color: var(--ink); }
+.dashboard-tools button, .dashboard-button { background: var(--ink); color: white; cursor: pointer; }
+.dashboard-button { display: inline-block; text-decoration: none; }
+#dashboard-direct-status { flex-basis: 100%; margin: 0; }
+@media(max-width: 650px) { .dashboard-grid { grid-template-columns: 1fr; } .dashboard-card { padding: 1.1rem; } }
