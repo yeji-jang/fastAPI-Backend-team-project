@@ -334,14 +334,21 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.service.list_reservations(ticketholder_id=OWNER_ID), [])
 
     # =========================================================
-    # 6. 예매대기 만료 (expire_pending)
+    # 6. 예매대기 만료 (find_expired_pending, expire)
     # =========================================================
+    async def test_시간이_지난_예매대기를_만료_대상으로_찾는다(self):
+        await self.store(status=ReservationStatus.PENDING)     # 1번 : NOW에 생성
+        await self.store(status=ReservationStatus.CONFIRMED)   # 2번 : 확정은 대상 아님
+
+        self.assertEqual(await self.service.find_expired_pending(now=NOW + timedelta(minutes=5)), [1])
+        self.assertEqual(await self.service.find_expired_pending(now=NOW + timedelta(minutes=5, seconds=-1)), [])
+
     async def test_시간이_지난_예매대기는_만료되고_좌석을_놓는다(self):
         await self.store(status=ReservationStatus.PENDING)    # NOW에 생성
 
-        expired = await self.service.expire_pending(now=NOW + timedelta(minutes=5))
+        expired = await self.service.expire(reserv_id=1, now=NOW + timedelta(minutes=5))
 
-        self.assertEqual([r.reserv_id for r in expired], [1])
+        self.assertTrue(expired)
         self.assertEqual(self.repository.items[1].status, ReservationStatus.EXPIRED)
         self.assertEqual(self.repository.status_updates, 1)          # 상태 저장 호출
         self.assertEqual(self.seat_allocation.released, [            # 잡고 있던 좌석 놓기
@@ -351,26 +358,26 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_시간이_지나지_않은_예매대기는_그대로다(self):
         await self.store(status=ReservationStatus.PENDING)
 
-        expired = await self.service.expire_pending(now=NOW + timedelta(minutes=5, seconds=-1))
+        expired = await self.service.expire(reserv_id=1, now=NOW + timedelta(minutes=5, seconds=-1))
 
-        self.assertEqual(expired, [])
+        self.assertFalse(expired)
         self.assertEqual(self.repository.items[1].status, ReservationStatus.PENDING)
         self.assertEqual(self.repository.status_updates, 0)          # 저장 안 됨
         self.assertEqual(self.seat_allocation.released, [])          # 좌석 그대로
 
-    async def test_확정된_예매는_만료하지_않는다(self):
-        await self.store(status=ReservationStatus.CONFIRMED)   # 1번 : 확정
-        await self.store(status=ReservationStatus.PENDING)     # 2번 : 예매대기
+    async def test_대상을_찾은_뒤_확정된_예매는_만료하지_않는다(self):
+        # 목록을 찾은 뒤 다시 조회했을 때 이미 확정이면 건너뛴다
+        await self.store(status=ReservationStatus.CONFIRMED)
 
-        expired = await self.service.expire_pending(now=NOW + timedelta(days=1))
+        expired = await self.service.expire(reserv_id=1, now=NOW + timedelta(days=1))
 
-        self.assertEqual([r.reserv_id for r in expired], [2])        # 예매대기만 만료
+        self.assertFalse(expired)
         self.assertEqual(self.repository.items[1].status, ReservationStatus.CONFIRMED)
+        self.assertEqual(self.seat_allocation.released, [])
 
     async def test_만료된_예매를_확정하면_409(self):
-        # 만료 후 늦게 결제 성공이 오는 경우 -> 결제 쪽에서 환불해야 함
         await self.store(status=ReservationStatus.PENDING)
-        await self.service.expire_pending(now=NOW + timedelta(minutes=5))
+        await self.service.expire(reserv_id=1, now=NOW + timedelta(minutes=5))
 
         with self.assertRaises(ReservationError) as error:
             await self.service.confirm(reserv_id=1, pay_id=30, now=NOW + timedelta(minutes=6))
@@ -386,7 +393,6 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assert_error(error, 409, "RESERVATION_EXPIRED")
         self.assertEqual(self.repository.status_updates, 0)          # 저장 안 됨
-
 
     # =========================================================
     # 7. 동시 요청 (저장 직전에 다른 요청이 상태를 바꾼 경우)
@@ -414,9 +420,9 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.store(status=ReservationStatus.PENDING)
         self.repository.conflict = True                              # 그 사이 확정 요청이 먼저 저장
 
-        expired = await self.service.expire_pending(now=NOW + timedelta(minutes=5))
+        expired = await self.service.expire(reserv_id=1, now=NOW + timedelta(minutes=5))
 
-        self.assertEqual(expired, [])                                # 만료된 예매 없음
+        self.assertFalse(expired)                                    # 만료 안 됨
         self.assertEqual(self.seat_allocation.released, [])          # 결제한 사람의 좌석은 그대로
 
 
