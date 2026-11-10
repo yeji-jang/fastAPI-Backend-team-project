@@ -6,8 +6,6 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import AsyncIterator
 
-from typing import AsyncIterator
-
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
