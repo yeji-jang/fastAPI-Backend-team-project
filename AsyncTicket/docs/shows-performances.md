@@ -202,3 +202,7 @@ PostgreSQL DDL 컴파일 검사는 실제 DB 적용·동시성·부하 검증이
 토큰 없는 요청은 401, JWT 설정 누락은 503이며 공개 조회와 앱 생성에는
 JWT 설정이 필요하지 않다. `create_app(authenticator=...)`로 명시한
 인증기는 계속 우선 적용한다.
+
+### 공개 조회 인메모리 캐시
+
+서버 lifespan에서 fastapi-cache2를 초기화하고 공연·회차 공개 조회의 data만 캐싱한다. 적용 TTL·변경 후 무효화·검사 방법과 프로세스별 한계는 [조회 캐시 안내](CATALOG_CACHE_KO.md)를 참고한다.
