@@ -120,12 +120,12 @@ class AuthApplicationTests(
         self.password_hasher = FakePasswordHasher()
 
         self.service = AuthApplicationService(
-            user_repository=self.user_repository,
+            account_reader=self.user_repository,
             token_blacklist_repository=(
                 self.blacklist_repository
             ),
             token_provider=self.token_provider,
-            password_hasher=self.password_hasher,
+            password_verifier=self.password_hasher,
         )
 
     async def test_login_success(self):
@@ -181,10 +181,10 @@ class AuthApplicationTests(
             role=UserRole.BUYER,
         )
         service = AuthApplicationService(
-            user_repository=self.user_repository,
+            account_reader=self.user_repository,
             token_blacklist_repository=self.blacklist_repository,
             token_provider=token_provider,
-            password_hasher=self.password_hasher,
+            password_verifier=self.password_hasher,
         )
 
         with self.assertRaises(UnauthorizedException):
@@ -203,10 +203,10 @@ class AuthApplicationTests(
             + ("a" if token_payload.access_token[-1] != "a" else "b")
         )
         service = AuthApplicationService(
-            user_repository=self.user_repository,
+            account_reader=self.user_repository,
             token_blacklist_repository=self.blacklist_repository,
             token_provider=token_provider,
-            password_hasher=self.password_hasher,
+            password_verifier=self.password_hasher,
         )
 
         with self.assertRaises(UnauthorizedException):
