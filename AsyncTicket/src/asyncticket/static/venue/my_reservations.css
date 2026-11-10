@@ -43,3 +43,14 @@
     .ticket-search { flex-basis: 100%; }
     .ticket-order { font-size: .6rem; }
 }
+
+.ticket-refresh { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .7rem; margin: 1rem 0; font-size: .75rem; color: #666; }
+.ticket-refresh button { font-size: .75rem; }
+.ticket-payment { font-size: .78rem; color: #555; overflow-wrap: anywhere; }
+.ticket-extra { border-top: 1px solid #ccc; margin-top: .8rem; padding-top: .7rem; font-size: .8rem; }
+.ticket-extra summary { cursor: pointer; }
+.ticket-extra dl { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: .5rem; }
+.ticket-extra dd { margin: 0; overflow-wrap: anywhere; }
+.ticket-extra dt { color: #666; }
+.ticket-cancel { border: 1px solid #777; padding: .8rem; background: transparent; color: inherit; font: inherit; font-size: .8rem; cursor: pointer; }
+.ticket-cancel:disabled, .ticket-refresh button:disabled { opacity: .5; cursor: wait; }

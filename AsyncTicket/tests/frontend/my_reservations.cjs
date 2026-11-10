@@ -37,12 +37,24 @@ function fixture(options = {}) {
             addEventListener: (name, callback) => { ready = callback; },
         },
         accountSession: { current: async () => options.user === undefined ? { role: 'BUYER' } : options.user, headers: () => ({}) },
-        requestApi: async url => {
+        window: { confirm: () => Boolean(options.confirm) },
+        requestApi: async (url, init = {}) => {
             calls.push(url);
             if (url === '/v1/reservations') {
                 if (options.listFailure) throw new Error('목록 조회 실패');
                 return records;
             }
+            if (/\/reservations\/\d+\/payment$/.test(url)) {
+                if(options.paymentMissing) throw Object.assign(new Error('없음'),{status:404});
+                return {status:'DONE',amount:'1000.00',order_id:'reserv-7'};
+            }
+            if(url.endsWith('/cancel')) {
+                if(options.cancelFailure) throw new Error('환불 실패');
+                const id=Number(url.split('/')[3]);const record=records.find(x=>x.reserv_id===id);record.status='CANCELED';record.perf_seat_id=null;
+                return record;
+            }
+            if (/\/reservations\/\d+\/seats$/.test(url)) return {items:[{grade:'R석',seat_seq:'R01'}]};
+            if (/\/reservations\/\d+$/.test(url)) return {...records.find(x=>x.reserv_id===Number(url.split('/').pop())),quantity:1};
             if (options.detailFailure) throw new Error('상세 조회 실패');
             if (url === '/v1/performances/1') return { perf_id: 1, show_id: 2, round_number: 1, starts_at: '2026-11-17T10:00:00+09:00' };
             if (url === '/v1/shows/2') return { show_id: 2, venues_id: 3, title: '밤의 재즈' };
@@ -75,7 +87,7 @@ async function run() {
         for (const url of ['/v1/performances/1', '/v1/shows/2', '/v1/venues?venues_id=3', '/v1/performances/1/seats']) {
             assert.equal(test.calls.filter(call => call === url).length, 1);
         }
-        assert.equal(descendants(list.children[1]).some(node => node.tag === 'button'), false);
+        assert.equal(descendants(list.children[1]).some(node => node.textContent === '결제 이어하기'), false);
         assert.equal(list.attributes['aria-busy'], 'false');
         passed.push('공연·일시·좌석·금액·상태 렌더링과 상세 조회 중복 방지');
         test.filters[3].handlers.click();
@@ -124,6 +136,29 @@ async function run() {
         }
         passed.push('대기 예매만 기존 예매의 결제 확인 화면으로 연결하며 토스 직접 호출하지 않음');
     }
+    {
+        const test=fixture({paymentMissing:true});await test.ready();
+        assert.equal(descendants(test.get('reservation-list').children[0]).find(n=>n.className==='ticket-payment').textContent,'결제 내역 없음');
+        passed.push('결제 404를 결제 내역 없음으로 표시');
+    }
+    {
+        const test=fixture();await test.ready();const row=test.get('reservation-list').children[1];
+        const detail=descendants(row).find(n=>n.className==='ticket-extra');detail.open=true;await detail.handlers.toggle();
+        assert.equal(test.calls.includes('/v1/reservations/8'),true);assert.equal(test.calls.includes('/v1/reservations/8/seats'),true);
+        passed.push('본인 예매 상세·좌석 API 호출');
+    }
+    {
+        const test=fixture({confirm:false});await test.ready();const button=descendants(test.get('reservation-list').children[1]).find(n=>n.className==='ticket-cancel');await button.handlers.click();
+        assert.equal(test.calls.some(url=>url.endsWith('/cancel')),false);
+        passed.push('취소 확인 거절 시 요청 없음');
+    }
+    for(const cancelFailure of [false,true]) {
+        const test=fixture({confirm:true,cancelFailure});await test.ready();const button=descendants(test.get('reservation-list').children[1]).find(n=>n.className==='ticket-cancel');await button.handlers.click();
+        assert.equal(test.calls.filter(url=>url.endsWith('/cancel')).length,1);
+        if(cancelFailure) assert.equal(button.disabled,true);
+        else assert.match(test.get('reservation-status').textContent,/취소 요청이 처리/);
+    }
+    passed.push('취소·환불 API 호출 후 재조회, 실패 시 즉시 재요청 차단');
     return passed;
 }
 

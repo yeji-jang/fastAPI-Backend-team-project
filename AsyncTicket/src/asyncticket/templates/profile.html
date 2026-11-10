@@ -54,10 +54,20 @@
         </form>
         <p class="auth-result" id="password-result" role="status"></p>
     </details>
+    <details class="profile-password" id="profile-withdraw" hidden>
+        <summary>회원 탈퇴</summary>
+        <p>회원 탈퇴는 예매 취소·환불을 대신하지 않습니다. 필요한 예매 내역을 먼저 확인해 주세요.</p>
+        <form id="withdraw-form">
+            <label><input id="withdraw-confirm" type="checkbox" required> 회원 탈퇴를 요청하는 것을 확인했습니다.</label>
+            <button id="withdraw-button" type="submit">회원 탈퇴 확정</button>
+        </form>
+        <p id="withdraw-status" role="status" aria-live="polite"></p>
+    </details>
     <p class="profile-actions"><button id="logout-button" type="button">로그아웃</button></p>
 {% endblock %}
 {% block alternate %}공연과 좌석 <a href="/shows">공연 목록</a>{% endblock %}
 {% block script %}
+<script src="{{ url_for('venue_assets', path='profile_withdraw.js').path }}" defer></script>
     <script>
         const logoutButton = document.querySelector("#logout-button");
 
@@ -159,6 +169,7 @@
                 document.querySelector("#profile-phone").textContent = user.phone_number;
                 document.querySelector("#profile-details").hidden = false;
                 document.querySelector("#profile-password").hidden = false;
+                document.querySelector("#profile-withdraw").hidden = false;
                 status.textContent = "";
             } catch {
                 status.textContent = "회원 정보를 불러오지 못했습니다.";

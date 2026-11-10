@@ -1,47 +1,15 @@
 {% extends "catalog_base.html" %}
 {% block title %}결제 결과{% endblock %}
-{% block head %}{% include "catalog_detail_styles.html" %}<meta name="referrer" content="no-referrer">{% endblock %}
+{% block head %}{% include "catalog_detail_styles.html" %}<link rel="stylesheet" href="{{ url_for('venue_assets', path='venues.css').path }}"><meta name="referrer" content="no-referrer">{% endblock %}
 {% block content %}
-<main class="detail-page">
+<div class="detail-page" data-payment-result="{{ result }}">
     <header class="detail-header"><p class="detail-kicker">PAYMENT</p><h1>결제 결과</h1></header>
     <p id="payment-status" role="status"></p>
-    <button id="approve" type="button" hidden>결제 승인 확인</button>
+    <button id="approve" class="venue-button" type="button" hidden>상태 확인·승인 재시도</button>
     <p><a href="/me/reservations">내 예매 확인</a></p>
-</main>
+</div>
 {% endblock %}
 {% block script %}
 <script src="{{ url_for('venue_assets', path='booking.js').path }}"></script>
-<script>
-const resultType = {{ result | tojson }};
-const params = new URLSearchParams(location.search);
-const paymentStatus = document.querySelector("#payment-status");
-const approveButton = document.querySelector("#approve");
-const amount = params.get("amount");
-if (resultType === "fail") {
-    paymentStatus.textContent = params.get("message") || "결제가 취소되었거나 완료되지 않았습니다. 내 예매에서 다시 시도할 수 있습니다.";
-} else if (!params.get("paymentKey") || !params.get("orderId") || !/^\d+$/.test(amount || "") || Number(amount) <= 0) {
-    paymentStatus.textContent = "결제 결과 정보를 확인할 수 없습니다. 내 예매에서 상태를 확인해 주세요.";
-} else {
-    paymentStatus.textContent = `${Number(amount).toLocaleString("ko-KR")}원 결제 인증이 완료되었습니다. 서버 승인을 확인해 주세요.`;
-    approveButton.hidden = false;
-}
-approveButton.addEventListener("click", async () => {
-    approveButton.disabled = true;
-    try {
-        await bookingGateway.buyer();
-        const payment = await bookingGateway.request("/v1/payments/approve", {
-            method: "POST", body: JSON.stringify({
-                payment_key: params.get("paymentKey"), order_id: params.get("orderId"), amount,
-            }),
-        });
-        if (payment.status !== "DONE") throw new Error("결제 상태를 다시 확인해 주세요.");
-        history.replaceState(null, "", "/payment/success");
-        paymentStatus.textContent = "결제가 승인되어 예매가 확정되었습니다.";
-        approveButton.hidden = true;
-    } catch (error) {
-        paymentStatus.textContent = `${error.message} 내 예매에서 상태를 확인한 뒤 다시 시도해 주세요.`;
-        approveButton.disabled = false;
-    }
-});
-</script>
+<script src="{{ url_for('venue_assets', path='payment_result.js').path }}" defer></script>
 {% endblock %}

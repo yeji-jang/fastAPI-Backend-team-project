@@ -60,6 +60,11 @@ async def performance(request: Request, performance_id: PositiveId):
     )
 
 
+@router.get("/manage/bookings")
+async def manage_bookings(request: Request):
+    return templates.TemplateResponse(request, "manage_bookings.html")
+
+
 @router.get("/manage/edit")
 async def manage_edit(request: Request):
     return templates.TemplateResponse(request, "manage.html")
