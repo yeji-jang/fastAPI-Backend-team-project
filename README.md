@@ -61,6 +61,16 @@
 
 ## 프로젝트 구조
 
+### 전체 도메인 구조도
+
+도메인 간 호출 관계와 인증, 의존성 조립, PostgreSQL 및 외부 결제 연동을 나타낸 구조도입니다.
+
+![AsyncTicket 전체 도메인 구조도](AsyncTicket/docs/images/asyncticket.png)
+
+[구조도 원본 크게 보기](AsyncTicket/docs/images/asyncticket.png)
+
+### 디렉토리와 4계층 구성
+
 ```text
 AsyncTicket/
 ├── src/asyncticket/
