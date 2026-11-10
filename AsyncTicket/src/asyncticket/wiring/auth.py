@@ -15,7 +15,11 @@ from asyncticket.auth.application.service import (
 from asyncticket.auth.domain.repository import (
     TokenBlacklistRepository,
 )
-from asyncticket.auth.domain.service import TokenProvider
+from asyncticket.auth.domain.service import (
+    AuthAccountReader,
+    PasswordVerifier,
+    TokenProvider,
+)
 from asyncticket.auth.infrastructure.repositories import (
     SqlAlchemyTokenBlacklistRepository,
 )
@@ -30,6 +34,7 @@ from asyncticket.shared.core.exceptions import (
 from asyncticket.users.domain.repository import UserRepository
 from asyncticket.users.domain.service import PasswordHasher
 from asyncticket.users.domain.users import User, UserRole
+from asyncticket.users.infrastructure.services import SqlAlchemyAuthAccountReader
 from asyncticket.wiring.users import (
     get_password_hasher,
     get_user_repository,
@@ -65,10 +70,16 @@ def get_token_provider() -> TokenProvider:
     )
 
 
+def get_auth_account_reader(
+    session: DatabaseSession,
+) -> AuthAccountReader:
+    return SqlAlchemyAuthAccountReader(session)
+
+
 def get_auth_service(
-    user_repository: Annotated[
-        UserRepository,
-        Depends(get_user_repository),
+    account_reader: Annotated[
+        AuthAccountReader,
+        Depends(get_auth_account_reader),
     ],
     blacklist_repository: Annotated[
         TokenBlacklistRepository,
@@ -78,16 +89,16 @@ def get_auth_service(
         TokenProvider,
         Depends(get_token_provider),
     ],
-    hasher: Annotated[
-        PasswordHasher,
+    verifier: Annotated[
+        PasswordVerifier,
         Depends(get_password_hasher),
     ],
 ) -> AuthApplicationService:
     return AuthApplicationService(
-        user_repository=user_repository,
+        account_reader=account_reader,
         token_blacklist_repository=blacklist_repository,
         token_provider=provider,
-        password_hasher=hasher,
+        password_verifier=verifier,
     )
 
 
@@ -100,6 +111,10 @@ async def get_current_user(
         AuthApplicationService,
         Depends(get_auth_service),
     ],
+    user_repository: Annotated[
+        UserRepository,
+        Depends(get_user_repository),
+    ],
 ) -> User:
     if credentials is None:
         raise UnauthorizedException(
@@ -107,9 +122,17 @@ async def get_current_user(
             error_code="AUTHENTICATION_REQUIRED",
         )
 
-    return await auth_service.authenticate(
+    identity = await auth_service.authenticate(
         credentials.credentials
     )
+
+    user = await user_repository.find_by_id(identity.user_id)
+    if user is None:
+        raise UnauthorizedException(
+            message="존재하지 않는 회원입니다.",
+            error_code="USER_NOT_FOUND",
+        )
+    return user
 
 
 async def require_admin(
