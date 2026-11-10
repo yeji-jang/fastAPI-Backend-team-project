@@ -47,6 +47,8 @@ class FrontendTests(unittest.IsolatedAsyncioTestCase):
             "style.css",
             "account.js",
             "booking.js",
+            "payment_result.js",
+            "profile_withdraw.js",
             "admin_booking_api.js",
             "manage_bookings.js",
             "manage_bookings.css",

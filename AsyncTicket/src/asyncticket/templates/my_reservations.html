@@ -35,6 +35,7 @@
             </div>
             <label class="ticket-search"><span>예매 검색</span><input id="ticket-search" type="search" placeholder="공연명·예매번호로 찾기" maxlength="255"></label>
         </div>
+        <div class="ticket-refresh"><span id="ticket-updated">아직 조회하지 않았습니다.</span><button id="ticket-refresh" class="venue-button" type="button" hidden>최신 상태 조회 ↻</button></div>
         <p id="reservation-status" class="venue-status" role="status" aria-live="polite">예매 내역을 불러오는 중…</p>
         <p id="reservation-login" hidden><a class="venue-button" href="/login?next=%2Fme%2Freservations">로그인하고 내 예매 보기 ↗</a></p>
         <button id="reservation-retry" class="venue-button" type="button" hidden>다시 불러오기 ↻</button>
