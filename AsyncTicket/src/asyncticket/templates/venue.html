@@ -1,0 +1,49 @@
+{% extends "catalog_base.html" %}
+{% block title %}공연장 상세{% endblock %}
+{% block head %}
+{% include "catalog_detail_styles.html" %}
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='venues.css').path }}">
+{% endblock %}
+{% block content %}
+<div class="detail-page venue-page">
+    <a class="venue-back" href="/venues">← 공연장 목록</a>
+    <header class="detail-header venue-detail-header"><p class="detail-kicker">ASYNC TICKET / VENUE {{ venue_id }}</p><h1 id="venue-name">공연장 상세</h1></header>
+    <p id="venue-status" class="venue-status" role="status" aria-live="polite">공연장을 불러오는 중…</p>
+    <button id="venue-retry" class="venue-button" type="button" hidden>다시 불러오기</button>
+    <section id="venue-information" class="venue-information" aria-label="공연장 안내" hidden>
+        <figure class="venue-cover venue-detail-cover"><img src="{{ url_for('venue_assets', path='audience.jpg').path }}" alt="객석에서 무대를 바라보는 관객들의 연출 이미지" width="1536" height="1024"><figcaption>공연장 분위기 · 실제 공연장 사진이 아닌 연출 이미지</figcaption></figure>
+        <div class="venue-information-copy"><p class="detail-kicker">01 / VISIT THE VENUE</p><h2>오시는 길</h2>
+            <dl class="venue-facts"><div><dt>주소</dt><dd id="venue-address"></dd></div><div><dt>상세 주소</dt><dd id="venue-address-detail"></dd></div><div><dt>우편번호</dt><dd id="venue-postcode"></dd></div></dl>
+            <a id="venue-shows" class="venue-button" href="/shows?venue_id={{ venue_id }}">이 공연장의 공연 보기 ↗</a>
+        </div>
+    </section>
+    <footer class="venue-footer"><span>ASYNC TICKET / VENUES</span><a href="/venues">다른 공연장 둘러보기 ↗</a></footer>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+    async function loadVenue() {
+        const status = document.querySelector("#venue-status");
+        const retry = document.querySelector("#venue-retry");
+        const information = document.querySelector("#venue-information");
+        status.textContent = "공연장을 불러오는 중…";
+        retry.hidden = true;
+        information.hidden = true;
+        try {
+            const venue = await requestApi("/v1/venues?venues_id={{ venue_id }}");
+            document.querySelector("#venue-name").textContent = venue.name;
+            document.title = `${venue.name} | AsyncTicket`;
+            document.querySelector("#venue-address").textContent = venue.address || "주소 미등록";
+            document.querySelector("#venue-address-detail").textContent = venue.address_detail || "별도 상세 주소 없음";
+            document.querySelector("#venue-postcode").textContent = venue.post_no || "미등록";
+            information.hidden = false;
+            status.textContent = "";
+        } catch (error) {
+            status.textContent = error.status === 404 ? "공연장을 찾을 수 없습니다. 목록에서 다른 공연장을 선택해주세요." : error.message;
+            retry.hidden = error.status === 404;
+        }
+    }
+    document.querySelector("#venue-retry").addEventListener("click", loadVenue);
+    loadVenue();
+</script>
+{% endblock %}

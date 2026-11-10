@@ -1,0 +1,60 @@
+{% extends "catalog_base.html" %}
+{% block title %}공연 상세{% endblock %}
+{% block head %}
+{% include "catalog_detail_styles.html" %}
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='show_detail.css').path }}">
+{% endblock %}
+{% block content %}
+<div class="detail-page show-page" data-show-id="{{ show_id }}">
+    <a class="show-back" href="/shows">← 공연 목록</a>
+    <p id="show-status" class="show-message" role="status" aria-live="polite">공연을 불러오는 중…</p>
+    <button id="show-retry" class="show-secondary" type="button" hidden>다시 불러오기</button>
+    <div id="show-content" hidden>
+        <section class="show-hero" aria-labelledby="show-title">
+            <figure class="show-artwork">
+                <img src="{{ url_for('venue_assets', path='after-hours.jpg').path }}" alt="무대에서 색소폰을 연주하는 음악가의 흑백 연출 이미지" width="1024" height="1536">
+                <div class="show-artwork-top" aria-hidden="true"><span>ASYNC TICKET</span><span>LIVE / {{ show_id }}</span></div>
+                <div class="show-artwork-title" aria-hidden="true"><span>TAKE</span><span>YOUR</span><span>SEAT.</span></div>
+                <figcaption>공연 분위기를 위한 연출 이미지 · 실제 공연 포스터가 아닙니다.</figcaption>
+            </figure>
+            <div class="show-overview">
+                <p class="detail-kicker">01 / LIVE PROGRAMME</p>
+                <span id="show-type" class="show-tag"></span>
+                <h1 id="show-title">공연 상세</h1>
+                <p class="show-lead" id="show-performer-lead"></p>
+                <dl class="show-facts">
+                    <div><dt>출연</dt><dd id="show-performer"></dd></div>
+                    <div><dt>공연 시간</dt><dd id="show-runtime"></dd></div>
+                    <div><dt>공연장</dt><dd><a id="show-venue"></a></dd></div>
+                    <div><dt>공연 일정</dt><dd id="show-date-range">회차 확인 중…</dd></div>
+                </dl>
+                <a class="show-primary" href="#show-rounds">회차 선택하기 <span aria-hidden="true">↓</span></a>
+                <p class="show-note">공연 일정과 좌석을 확인한 뒤 예매 조건을 확인할 수 있어요.</p>
+            </div>
+        </section>
+        <nav class="show-section-nav" aria-label="공연 상세 메뉴"><a href="#show-about">공연 소개</a><a href="#show-rounds">일정·좌석</a><a href="#show-location">공연장 안내</a></nav>
+        <div class="show-body">
+            <div class="show-editorial">
+                <section id="show-about" class="show-section" aria-labelledby="show-about-title"><p class="detail-kicker">02 / ABOUT THE SHOW</p><h2 id="show-about-title">공연 소개</h2><p id="show-description"></p></section>
+                <section id="show-location" class="show-section" aria-labelledby="show-location-title"><p class="detail-kicker">03 / THE VENUE</p><h2 id="show-location-title">무대를 만나는 곳</h2><p id="show-venue-name"></p><p id="show-venue-address" class="show-muted"></p><a id="show-venue-details" class="show-text-link">공연장 상세 보기 ↗</a></section>
+            </div>
+            <section id="show-rounds" class="show-rounds" aria-labelledby="rounds-title">
+                <p class="detail-kicker">04 / PICK YOUR SESSION</p><h2 id="rounds-title">언제 만나볼까요?</h2>
+                <p class="show-muted">회차를 선택해 일정과 예매 기간을 확인하세요.<br>모든 시각은 한국 시간 기준입니다.</p>
+                <p id="performance-status" class="show-message" role="status" aria-live="polite"></p>
+                <button id="rounds-retry" class="show-secondary" type="button" hidden>회차 다시 불러오기</button>
+                <fieldset id="round-options" hidden><legend class="show-sr-only">공연 회차 선택</legend><div id="performance-list"></div></fieldset>
+                <div id="selected-performance" class="selected-performance" hidden>
+                    <p class="detail-kicker">YOUR SESSION</p><p id="selected-round-title" class="selected-round-title"></p>
+                    <dl class="show-facts"><div><dt>공연 시간</dt><dd id="selected-round-time"></dd></div><div><dt>예매 기간</dt><dd id="selected-booking-time"></dd></div><div><dt>회차 안내</dt><dd id="selected-round-policy"></dd></div></dl>
+                    <a id="show-seat-link" class="show-primary">좌석 배치도 보기 <span aria-hidden="true">↗</span></a>
+                    <a id="show-round-link" class="show-text-link">회차·좌석 목록 보기 →</a>
+                    <p class="show-note">좌석 조회만으로 좌석이 확보되지는 않아요. 예매 요청 후 결제를 완료해 주세요.</p>
+                </div>
+            </section>
+        </div>
+        <footer class="show-footer"><span>ASYNC TICKET / LIVE PROGRAMME</span><a href="/shows">다른 공연 둘러보기 ↗</a></footer>
+    </div>
+</div>
+{% endblock %}
+{% block script %}<script src="{{ url_for('venue_assets', path='show_detail.js').path }}" defer></script>{% endblock %}

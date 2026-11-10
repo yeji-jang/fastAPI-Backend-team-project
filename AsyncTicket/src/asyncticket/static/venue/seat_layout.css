@@ -1,0 +1,2 @@
+.seat-row { display: grid; grid-template-columns: var(--seat-row-label-width, 1.35rem) repeat(4, minmax(0, 1fr)) clamp(3px, 1.35vw, 18px) repeat(4, minmax(0, 1fr)); gap: var(--seat-row-gap, clamp(3px, .65vw, 9px)); align-items: center; max-width: 34rem; margin: 0 auto .45rem; }
+.row-label { font: 700 .8rem monospace; }

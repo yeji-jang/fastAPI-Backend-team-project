@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{% endblock %} | AsyncTicket</title>
+    <style>
+        :where(button, input:not([type="radio"]), select, textarea, fieldset, details, dialog) { border-radius: 0; }
+    </style>
+    {% block head %}{% endblock %}
+    {% include "account_assets.html" %}
+</head>
+<body>
+    <header class="catalog-nav">
+        <nav aria-label="주 메뉴">
+            <a href="/">홈</a> · <a href="/venues">공연장</a> · <a href="/shows">공연</a>
+        </nav>
+        {% include "account_nav.html" %}
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <script>
+        async function requestApi(url, options) {
+            const response = await fetch(url, options);
+            if (response.status === 204) return null;
+            const body = await response.json().catch(() => null);
+            if (!response.ok) {
+                const detail = typeof body?.detail === "string" ? body.detail : null;
+                const error = new Error(body?.message || detail || `요청에 실패했습니다. (${response.status})`);
+                error.status = response.status;
+                throw error;
+            }
+            return body?.data;
+        }
+
+        function addLink(list, label, url, description = "") {
+            const item = document.createElement("li");
+            const link = document.createElement("a");
+            link.href = url;
+            link.textContent = label;
+            item.append(link);
+            if (description) item.append(` · ${description}`);
+            list.append(item);
+        }
+
+        function formatDate(value) {
+            return new Intl.DateTimeFormat("ko-KR", {
+                dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul",
+            }).format(new Date(value));
+        }
+    </script>
+    {% block script %}{% endblock %}
+</body>
+</html>
