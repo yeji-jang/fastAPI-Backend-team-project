@@ -355,6 +355,35 @@ checks_failed:      0.00% (0 out of 7)
 
 좌석 기능의 상세 검증 시나리오는 [좌석 테스트 시나리오](AsyncTicket/docs/SEATS_TEST_SCENARIOS_KO.md)를 참고합니다.
 
+### k6 PENDING 만료 후 좌석 재예매 테스트 결과
+
+팀원이 공유한 로컬 실행 결과를 정리했습니다. 서로 다른 회원 2명이 같은 회차·좌석을 예매할 때 **만료 전에는 충돌로 거절되고, 첫 번째 PENDING 예매가 만료된 후에는 다른 회원이 좌석을 재예매할 수 있는지** 확인했습니다.
+
+| 항목 | 설정·결과 |
+| ---- | --------- |
+| 스크립트 | [reservation-expire-reuse.js](AsyncTicket/scripts/k6/reservation-expire-reuse.js) |
+| 실행 환경 | 로컬 `http://127.0.0.1:8000`, 테스트 회원 2명, 1회 실행 |
+| 대상 데이터 | `PERF_ID=1`, `SEAT_ID=1` (`performance_seats.perf_seat_id`) |
+| 요청 1 | 첫 번째 회원: HTTP **201**, `RESERVATION_CREATED`, **PENDING** 예매 생성 |
+| 요청 2 | 만료 전 두 번째 회원: HTTP **409**, `SEAT_RESERVATION_CONFLICT` |
+| 대기 | 약 **6분**: PENDING 만료 시간 **5분** + 백그라운드 확인 주기 **60초** 반영 |
+| 요청 3 | 만료 후 두 번째 회원: HTTP **201**, `RESERVATION_CREATED`, 같은 좌석 재예매 성공 |
+| 검사 결과 | **checks 5개 모두 통과**, HTTP 요청 실패율 **0%** |
+
+`AsyncTicket` 폴더에서 실행합니다. 스크립트의 테스트 계정 2개를 먼저 가입시키거나 계정 설정을 준비하고, 예매 기간 내 회차와 가격이 양수인 `AVAILABLE` 좌석을 사용합니다. 두 회원 모두 해당 회차의 진행 중 예매가 없어야 합니다.
+
+```powershell
+$env:PERF_ID = '1'
+$env:SEAT_ID = '1'
+k6 run scripts/k6/reservation-expire-reuse.js
+```
+
+현재 스크립트는 로컬 서버 주소와 계정을 파일에 설정하며, 위 동시성 스크립트의 `BASE_URL`·`ACCOUNTS_JSON` 환경변수 설정을 사용하지 않습니다. 자세한 준비·실행 방법은 파일 상단을 참고합니다.
+
+이 테스트는 **좌석 충돌 응답과 PENDING 만료 후 좌석 재사용**을 확인하는 시나리오입니다. 두 번째 회원은 시작 5초 후 요청하고 약 6분 대기 후 재요청하므로, 여러 VU의 정확한 동시 처리 성능이나 서버 한계 부하를 검증한 결과는 아닙니다. 전체 HTTP 요청 5건은 로그인 2건과 예매 3건이며, 예상한 HTTP 409는 실패율 계산에서 허용하되 별도 check로 오류 코드를 확인합니다.
+
+공유된 결과는 API 응답 기준이며 최종 DB 직접 검증 결과는 포함하지 않았습니다. 실행 후 두 번째 회원의 PENDING 예매가 남을 수 있으므로, 같은 데이터로 재실행하려면 만료·좌석 해제를 기다리거나 테스트 데이터를 정리해야 합니다.
+
 ## 설계 결정과 트러블슈팅
 
 ### 주요 설계 결정
