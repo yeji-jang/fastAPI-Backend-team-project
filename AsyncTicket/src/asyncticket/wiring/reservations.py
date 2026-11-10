@@ -4,6 +4,7 @@
 
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Annotated, Any, Callable
 
 from fastapi import Depends, FastAPI
@@ -58,20 +59,39 @@ def wire_dependencies(
     app.dependency_overrides[provide_reservation_service] = reservation_service
 
 
-# 5) 예매대기 만료 1회 실행 : 새 세션을 열어 만료 처리 후 직접 commit
+# 5) 예매대기 만료 1회 실행 : 예매마다 트랜잭션을 나눠 처리
 #    - HTTP 요청이 아니라서 get_db를 쓸 수 없으므로 세션을 직접 연다
-async def expire_pending_reservations() -> int:
-    from asyncticket.shared.core.database import AsyncSessionLocal
+#    - 예매 1건의 상태 변경 + 좌석 해제는 같은 트랜잭션 (둘 다 되거나 둘 다 취소)
+#    - 한 건이 실패해도 그 건만 rollback 하고 나머지는 계속 처리한다
+async def expire_pending_reservations(
+    *,
+    now: datetime | None = None,
+    session_factory=None,
+    service_factory: Callable[[AsyncSession], ReservationService] = create_reservation_service,
+) -> int:
+    if session_factory is None:
+        from asyncticket.shared.core.database import AsyncSessionLocal
 
-    async with AsyncSessionLocal() as session:
-        try:
-            service = create_reservation_service(session)
-            expired = await service.expire_pending()
-            await session.commit()          # 만료 상태 + 좌석 해제를 한 번에 확정
-            return len(expired)
-        except Exception:
-            await session.rollback()        # 하나라도 실패하면 전부 취소 (다음 주기에 재시도)
-            raise
+        session_factory = AsyncSessionLocal
+    now = now or datetime.now(timezone.utc)
+
+    # ① 만료 대상 ID만 먼저 찾는다 (조회만 하므로 commit 없음)
+    async with session_factory() as session:
+        reserv_ids = await service_factory(session).find_expired_pending(now=now)
+
+    # ② 예매마다 새 세션(트랜잭션)으로 만료
+    expired_count = 0
+    for reserv_id in reserv_ids:
+        async with session_factory() as session:
+            try:
+                if await service_factory(session).expire(reserv_id=reserv_id, now=now):
+                    expired_count += 1
+                await session.commit()      # 이 예매의 만료 상태 + 좌석 해제 확정
+            except Exception:
+                await session.rollback()    # 이 예매만 취소 (다음 주기에 다시 시도)
+                logger.exception("예매대기 만료 실패 : reserv_id=%s", reserv_id)
+
+    return expired_count
 
 
 # 6) 1분마다 만료 반복 (서버가 켜져 있는 동안)
