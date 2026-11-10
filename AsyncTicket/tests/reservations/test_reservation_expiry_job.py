@@ -70,6 +70,7 @@ class ExpiryJobTests(unittest.IsolatedAsyncioTestCase):
             performance_reader=app_tests.FakePerformanceReader(),
             seat_reader=app_tests.FakeSeatReader(),
             seat_allocation=self.seat_allocation,
+            payment_refund=app_tests.FakePaymentRefund(), # 예매 만료에서는 환불 안함
         )
 
     async def run_job(self):

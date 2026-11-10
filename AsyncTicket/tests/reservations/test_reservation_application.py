@@ -17,7 +17,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from asyncticket.reservations.application.service import ReservationService
+from asyncticket.reservations.application.service import ReservationService, CANCEL_REFUND_REASON
 from asyncticket.reservations.domain.enums import ReservationStatus
 from asyncticket.reservations.domain.reservation import (
     Reservation, TicketHolder, ReservedPerformance, ReservedSeat, ReservedPayment, ReservationError,
@@ -123,6 +123,18 @@ class FakeSeatAllocation:
         self.released.append(kwargs)
 
 
+class FakePaymentRefund : 
+    """결제 환불(ports.py) 대신 : 환불 요청을 기록, fail=True면 환불실패"""
+
+    def __init__(self):
+        self.refunded = []
+        self.fail = False
+
+    async def refund(self, **kwargs) :
+        if self.fail : 
+            raise RuntimeError("환불 실패")
+        self.refunded.append(kwargs)
+
 class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
@@ -130,12 +142,14 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.repository = FakeRepository()
         self.checker = FakeChecker()
         self.seat_allocation = FakeSeatAllocation()
+        self.payment_refund = FakePaymentRefund()
         self.service = ReservationService(
             repository=self.repository,
             checker=self.checker,
             performance_reader=FakePerformanceReader(),
             seat_reader=FakeSeatReader(),
             seat_allocation=self.seat_allocation,
+            payment_refund=self.payment_refund,
         )
 
     async def store(self, *, status=ReservationStatus.CONFIRMED, owner_id=OWNER_ID, seat_id=PERF_SEAT_ID):
@@ -258,7 +272,10 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.seat_allocation.released, [            # 예매에 있던 회차·좌석으로 놓기
             {"perf_id": PERF_ID, "perf_seat_id": PERF_SEAT_ID, "reserv_id": 1},
         ])
-
+        self.assertEqual(self.payment_refund.refunded, [             # 마지막에 결제 환불 요청
+            {"reserv_id": 1, "reason": CANCEL_REFUND_REASON},
+        ])
+        
     async def test_다른_회원이_취소하면_403(self):
         await self.store(status=ReservationStatus.CONFIRMED)
 
@@ -295,6 +312,22 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(reservation.status, ReservationStatus.CANCELED)
         self.assertEqual(self.seat_allocation.released, [])
+
+    async def test_취소가_거절되면_환불을_요청하지_않는다(self):
+        await self.store(status=ReservationStatus.CONFIRMED)
+
+        with self.assertRaises(ReservationError):
+            await self.service.cancel(reserv_id=1, ticketholder_id=OTHER_ID, now=NOW)   # 남의 예매
+
+        self.assertEqual(self.payment_refund.refunded, [])
+
+    async def test_환불이_실패하면_취소도_실패한다(self):
+        # 같은 요청(트랜잭션)이라 예외가 올라가면 get_db가 취소·좌석 해제까지 rollback 한다
+        await self.store(status=ReservationStatus.CONFIRMED)
+        self.payment_refund.fail = True
+
+        with self.assertRaises(RuntimeError):
+            await self.service.cancel(reserv_id=1, ticketholder_id=OWNER_ID, now=NOW)
 
     # =========================================================
     # 5. 예매 조회 (get_reservation, list_reservations)
@@ -415,6 +448,7 @@ class ReservationServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assert_error(error, 409, "RESERVATION_NOT_CANCELABLE")
         self.assertEqual(self.seat_allocation.released, [])          # 좌석 두 번 해제 방지
+        self.assertEqual(self.payment_refund.refunded, [])           # 환불 두 번 방지
 
     async def test_만료_저장_전에_확정되었으면_건너뛰고_좌석을_놓지_않는다(self):
         await self.store(status=ReservationStatus.PENDING)
@@ -464,7 +498,45 @@ class SeatAllocationAdapterTests(unittest.IsolatedAsyncioTestCase):
             "expected_status": SeatStatus.RESERVED, "released_status": SeatStatus.AVAILABLE,
         })
 
-    
+
+
+class FakePaymentService:
+    """결제 서비스(PaymentService) 대신 : 받은 인자를 기록"""
+
+    def __init__(self):
+        self.calls = []
+
+    async def refund_for_reservation(self, **kwargs):
+        self.calls.append(kwargs)
+
+
+class PaymentRefundAdapterTests(unittest.IsolatedAsyncioTestCase):
+
+    async def test_환불하면_결제_서비스의_refund_for_reservation을_호출한다(self):
+        from asyncticket.reservations.infrastructure.adapter_payment_refund import PaymentRefundAdapter
+
+        payment_service = FakePaymentService()
+        made = []
+        def factory():
+            made.append(1)
+            return payment_service
+        adapter = PaymentRefundAdapter(factory)
+        self.assertEqual(made, [])                                   # 만들기만 해서는 결제 서비스를 만들지 않음
+
+        await adapter.refund(reserv_id=1, reason="사용자 예매 취소")
+
+        self.assertEqual(made, [1])                                  # 환불할 때 한 번 만듦
+        self.assertEqual(payment_service.calls, [{"reserv_id": 1, "reason": "사용자 예매 취소"}])
+
+    def test_예매_서비스와_결제_서비스를_서로_무한히_만들지_않는다(self):
+        # wiring/payment.py는 예매 서비스를, wiring/reservations.py는 (환불할 때) 결제 서비스를 만든다
+        from asyncticket.wiring.reservations import create_reservation_service
+        from asyncticket.payment.application.service import PaymentService
+
+        service = create_reservation_service(object())               # 세션 대신 아무 객체 (DB 접속 안 함)
+        payment_service = service.payment_refund.payment_service_factory()
+
+        self.assertIsInstance(payment_service, PaymentService)
 
 if __name__ == "__main__":
     unittest.main()
