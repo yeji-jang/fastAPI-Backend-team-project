@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="AsyncTicket에서 공연 일정과 좌석 정보를 확인하세요.">
+    <title>AsyncTicket — 독립 공연장</title>
+    <link rel="stylesheet" href="{{ url_for('venue_assets', path='style.css').path }}">
+    <script src="{{ url_for('venue_assets', path='data.js').path }}" defer></script>
+    <script src="{{ url_for('venue_assets', path='booking.js').path }}" defer></script>
+    {% include "account_assets.html" %}
+    <link rel="stylesheet" href="{{ url_for('venue_assets', path='seat_layout.css').path }}">
+    <script src="{{ url_for('venue_assets', path='seat_layout.js').path }}" defer></script>
+    <script src="{{ url_for('venue_assets', path='app.js').path }}" defer></script>
+</head>
+<body>
+    <header class="masthead">
+        <a class="wordmark" href="#home" data-home>ASYNC<span>TICKET</span><sup>✳</sup></a>
+        <nav aria-label="주 메뉴">
+            <a href="#programme" id="programme-link">PROGRAMME</a>
+            <a href="/venues" id="venue-link">VENUE</a>
+        </nav>
+        {% include "account_nav.html" %}
+    </header>
+
+    <main id="home">
+        <div id="browse">
+            <section class="feature" aria-label="추천 공연">
+                <aside class="index">
+                    <p class="eyebrow">ASYNC ROOM<br>SEOUL, KR</p>
+                    <p class="index-copy">작은 무대,<br>가까운 음악.</p>
+                    <ol id="index-list" aria-label="공연 바로가기"></ol>
+                    <p class="issue">VOL. 01<br>WINTER PROGRAMME</p>
+                </aside>
+
+                <figure class="poster" id="feature-poster" data-art="jazz">
+                    <img src="{{ url_for('venue_assets', path='after-hours.jpg').path }}" alt="작은 무대에서 색소폰을 연주하는 음악가의 흑백 예시 이미지" fetchpriority="high">
+                    <div class="poster-top"><span>LIVE IN THE ROOM</span><span id="poster-number">01 / 01</span></div>
+                    <figcaption id="poster-title" aria-hidden="true">ASYNC<br>LIVE</figcaption>
+                    <div class="poster-bottom"><span id="poster-date"></span><span>ASYNC ROOM ↗</span></div>
+                </figure>
+
+                <article class="detail" id="show-detail" aria-labelledby="show-title">
+                    <p class="eyebrow detail-top"><span>NOW PLAYING</span><span id="show-genre"></span></p>
+                    <h1 id="show-title" tabindex="-1">공연을 불러오는 중…</h1>
+                    <p class="subtitle" id="show-subtitle"></p>
+                    <dl class="show-meta">
+                        <div><dt>장소</dt><dd id="show-venue"></dd></div>
+                        <div><dt>공연 시간</dt><dd id="show-runtime"></dd></div>
+                    </dl>
+                    <p class="description" id="show-description"></p>
+                    <fieldset class="rounds">
+                        <legend>01 / 회차를 선택하세요</legend>
+                        <div id="round-list"></div>
+                    </fieldset>
+                    <button class="primary" id="open-seats" type="button" disabled>좌석 배치도 보기 <span aria-hidden="true">↗</span></button>
+                </article>
+            </section>
+
+            <section class="programme" id="programme" aria-labelledby="programme-title">
+                <header class="section-heading">
+                    <p class="eyebrow">01 — WHAT’S ON</p>
+                    <h2 id="programme-title">Programme<span>.</span></h2>
+                </header>
+                <div id="programme-list" class="programme-grid"></div>
+            </section>
+
+            <section class="venue" id="venue">
+                <p class="eyebrow">02 — THE VENUE</p>
+                <h2 id="venue-name"></h2>
+                <p id="venue-address"></p>
+                <figure class="venue-photo">
+                    <img src="{{ url_for('venue_assets', path='audience.jpg').path }}"
+                         alt="어두운 소극장에서 무대를 바라보는 관객들의 뒷모습"
+                         width="1536" height="1024" loading="lazy" decoding="async">
+                    <figcaption>객석에서 바라본 작은 무대 · 연출 이미지</figcaption>
+                </figure>
+            </section>
+        </div>
+
+        <section id="booking" class="booking" aria-labelledby="booking-title" hidden>
+            <header class="booking-heading">
+                <button type="button" class="text-button" id="back-to-show">← 공연 상세</button>
+                <p class="eyebrow">02 — SEATING PLAN</p>
+                <h1 id="booking-title" tabindex="-1">좌석 선택</h1>
+                <p id="booking-event"></p>
+                <p id="booking-capacity" class="eyebrow" aria-live="polite"></p>
+            </header>
+            <p id="booking-message" role="status" hidden></p>
+            <div class="booking-grid">
+                <div class="map">
+                    <p class="eyebrow map-heading"><span id="map-venue"></span><span>객석 배치 참고도</span></p>
+                    <p class="stage">무대 / STAGE</p>
+                    <div id="seat-rows" aria-label="좌석 배치"></div>
+                    <p class="map-note">좌석 위치는 참고용이며, 실제 객석 배치와 다를 수 있습니다.</p>
+                    <ul class="legend" aria-label="좌석 상태 범례">
+                        <li><span class="legend-r"></span>R석</li>
+                        <li><span class="legend-s"></span>S석</li>
+                        <li><span class="legend-selected"></span>선택</li>
+                        <li><span class="legend-unavailable"></span>선택 불가</li>
+                    </ul>
+                </div>
+                <aside class="ticket" aria-labelledby="ticket-title">
+                    <p class="eyebrow">YOUR TICKET / 01</p>
+                    <h2 id="ticket-title">선택 요약</h2>
+                    <p id="seat-summary" aria-live="polite">배치도에서 좌석을 골라주세요.</p>
+                    <button class="primary" id="open-checkout" type="button" disabled>예매하기 <span aria-hidden="true">→</span></button>
+                </aside>
+            </div>
+            <dialog id="checkout" aria-labelledby="checkout-title">
+                <p class="eyebrow">03 — TICKETS</p>
+                <h2 id="checkout-title">선택한 좌석 확인</h2>
+                <p id="checkout-event"></p>
+                <p id="checkout-seat"></p>
+                <p class="preview-note" id="checkout-status" role="status">선택한 좌석을 확인하고 예매를 진행해 주세요.</p>
+                <p><a id="checkout-conditions">예매 기간 및 내 예매 확인</a></p>
+                <button class="primary" id="submit-booking" type="button" disabled>예매하고 결제로 이동</button>
+                <form method="dialog"><button class="primary">좌석 화면으로</button></form>
+            </dialog>
+        </section>
+        <section id="page-error" class="empty-programme" role="status" hidden>
+            <p class="eyebrow">NEXT ON STAGE</p>
+            <h1>새로운 무대를<br>기다리는 시간.</h1>
+            <p id="page-error-message"></p>
+            <nav aria-label="다른 화면 둘러보기"><a href="/shows">공연 목록 ↗</a><a href="/venues">공연장 둘러보기 ↗</a><a href="/login">로그인 ↗</a></nav>
+        </section>
+    </main>
+
+    <footer>ASYNC TICKET <span>공연 · 회차 · 좌석</span></footer>
+</body>
+</html>

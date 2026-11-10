@@ -1,0 +1,94 @@
+{% extends "catalog_base.html" %}
+{% block title %}회차와 좌석{% endblock %}
+{% block head %}{% include "catalog_detail_styles.html" %}{% endblock %}
+{% block content %}
+<div class="detail-page">
+    <header class="detail-header">
+        <p class="detail-kicker">02 — PERFORMANCE &amp; SEATS</p>
+        <h1 id="performance-title">회차 상세</h1>
+    </header>
+    <p id="performance-status" role="status">회차를 불러오는 중…</p>
+    <div id="performance-details" hidden>
+        <p id="performance-time"></p>
+        <p id="booking-time"></p>
+        <p id="performance-meta"></p>
+        <p><a id="performance-show">공연 상세로</a></p>
+        <h2>좌석 목록</h2>
+        <p><a href="/?performance_id={{ performance_id }}">좌석 배치도에서 보기</a></p>
+        <p>조회 화면에 표시된 좌석 상태는 확인 시점 기준이에요.</p>
+        <p id="seat-status" role="status">좌석을 불러오는 중…</p>
+        <ul id="seat-list"></ul>
+        <p id="seat-selection" role="status"></p>
+        <p>
+            <a id="booking-link" hidden>선택한 좌석 확인</a>
+            <a href="/reservations">예매 안내</a>
+        </p>
+    </div>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+    async function loadPerformance() {
+        const status = document.querySelector("#performance-status");
+        const seatStatus = document.querySelector("#seat-status");
+        const url = "/v1/performances/{{ performance_id }}";
+
+        try {
+            const performance = await requestApi(url);
+            document.querySelector("#performance-title").textContent = `${performance.round_number}회차`;
+            document.querySelector("#performance-time").textContent =
+                `공연 시간 · ${formatDate(performance.starts_at)} ~ ${formatDate(performance.ends_at)}`;
+            document.querySelector("#booking-time").textContent =
+                `예매 기간 · ${formatDate(performance.booking_opens_at)} ~ ${formatDate(performance.booking_closes_at)}`;
+            document.querySelector("#performance-meta").textContent =
+                `운영 상태 ${performance.status} · 1인당 최대 ${performance.max_tickets_per_user}매`;
+            document.querySelector("#performance-show").href = `/shows/${performance.show_id}`;
+            document.querySelector("#performance-details").hidden = false;
+            status.textContent = "";
+        } catch (error) {
+            status.textContent = error.message;
+            return;
+        }
+
+        try {
+            const { items } = await requestApi(`${url}/seats`);
+            const list = document.querySelector("#seat-list");
+            const labels = { AVAILABLE: "선택 가능", RESERVED: "예약 중", OCCUPIED: "사용 중" };
+            for (const seat of items) {
+                const item = document.createElement("li");
+                const price = seat.price === null ? "가격 미정" : `${seat.price.toLocaleString("ko-KR")}원`;
+                const labelText = [seat.seat_seq, seat.grade, price, labels[seat.status] || seat.status]
+                    .filter(Boolean).join(" · ");
+                if (seat.status === "AVAILABLE") {
+                    const choice = document.createElement("input");
+                    choice.autocomplete = "off";
+                    choice.type = "radio";
+                    choice.name = "seat";
+                    choice.addEventListener("change", () => {
+                        document.querySelector("#seat-selection").textContent =
+                            `선택한 좌석: ${seat.seat_seq}. 화면에서만 선택됐어요.`;
+                        const link = document.querySelector("#booking-link");
+                        const params = new URLSearchParams({
+                            perf_id: seat.perf_id,
+                            perf_seat_id: seat.perf_seat_id,
+                        });
+                        link.href = `/reservations?${params}`;
+                        link.hidden = false;
+                    });
+                    const label = document.createElement("label");
+                    label.append(choice, labelText);
+                    item.append(label);
+                } else {
+                    item.textContent = labelText;
+                }
+                list.append(item);
+            }
+            seatStatus.textContent = items.length ? "" : "등록된 좌석이 없습니다.";
+        } catch (error) {
+            seatStatus.textContent = error.message;
+        }
+    }
+
+    loadPerformance();
+</script>
+{% endblock %}

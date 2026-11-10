@@ -1,0 +1,51 @@
+{% extends "catalog_base.html" %}
+{% block title %}좌석 예매{% endblock %}
+{% block head %}{% include "catalog_detail_styles.html" %}{% endblock %}
+{% block content %}
+<main class="detail-page">
+    <header class="detail-header"><p class="detail-kicker">TICKETS</p><h1>좌석 예매</h1></header>
+    <p id="selection-status" role="status">회차와 좌석을 선택해 주세요.</p>
+    <section id="selection" hidden>
+        <h2>선택한 좌석</h2><p id="selection-event"></p><p id="selection-seat"></p>
+        <p>좌석은 예매 요청이 성공했을 때 확보됩니다. 결제 승인 후 예매가 확정됩니다.</p>
+        <button id="reserve" type="button">예매하고 결제로 이동</button>
+        <p><a id="selection-back">회차 화면으로</a></p>
+    </section>
+    <p><a href="/shows">공연 목록 보기</a> · <a href="/me/reservations">내 예매</a></p>
+</main>
+{% endblock %}
+{% block script %}
+<script src="{{ url_for('venue_assets', path='booking.js').path }}"></script>
+<script>
+const selectionParams = new URLSearchParams(location.search);
+const selectedPerformanceId = selectionParams.get("perf_id");
+const selectedPerformanceSeatId = selectionParams.get("perf_seat_id");
+const selectionStatus = document.querySelector("#selection-status");
+const reserveButton = document.querySelector("#reserve");
+async function loadSelection() {
+    const validId = value => /^[1-9][0-9]{0,18}$/.test(value || "");
+    if (!validId(selectedPerformanceId) || !validId(selectedPerformanceSeatId)) return;
+    try {
+        const url = `/v1/performances/${selectedPerformanceId}`;
+        const [round, { items }] = await Promise.all([requestApi(url), requestApi(`${url}/seats`, { cache: "no-store" })]);
+        const seat = items.find(item => String(item.perf_seat_id) === selectedPerformanceSeatId);
+        if (!seat) throw new Error("선택한 좌석을 찾을 수 없습니다.");
+        const show = await requestApi(`/v1/shows/${round.show_id}`);
+        document.querySelector("#selection-event").textContent = `${show.title} · ${round.round_number}회차 · ${formatDate(round.starts_at)}`;
+        document.querySelector("#selection-seat").textContent = `${seat.seat_seq} · ${seat.grade || ""} · ${seat.price == null ? "가격 미정" : Number(seat.price).toLocaleString("ko-KR") + "원"}`;
+        document.querySelector("#selection-back").href = `/performances/${selectedPerformanceId}`;
+        document.querySelector("#selection").hidden = false;
+        reserveButton.disabled = seat.status !== "AVAILABLE";
+        selectionStatus.textContent = seat.status === "AVAILABLE" ? "선택한 내용을 확인하고 예매해 주세요." : "현재 선택 가능한 좌석이 아닙니다. 내 예매에 대기 건이 있다면 결제를 이어갈 수 있습니다.";
+    } catch (error) { selectionStatus.textContent = error.message; }
+}
+reserveButton.addEventListener("click", async () => {
+    reserveButton.disabled = true;
+    try {
+        selectionStatus.textContent = "예매를 요청하는 중…";
+        await bookingGateway.startPayment({ performanceId: selectedPerformanceId, performanceSeatId: selectedPerformanceSeatId });
+    } catch (error) { selectionStatus.textContent = error.message; reserveButton.disabled = false; }
+});
+loadSelection();
+</script>
+{% endblock %}

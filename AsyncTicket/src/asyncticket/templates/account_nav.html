@@ -1,0 +1,19 @@
+<nav class="account-nav" aria-label="계정 메뉴" data-account-nav>
+    <div class="account-guest" data-account-guest>
+        <a href="/login">로그인</a>
+        <a href="/signup">회원가입</a>
+    </div>
+    <details class="account-menu" data-account-menu hidden>
+        <summary data-account-name></summary>
+        <ul>
+            <li><a href="/me">내 정보</a></li>
+            <li data-buyer-link hidden><a href="/me/reservations">내 예매</a></li>
+            <li data-manager-link hidden><a href="/manage">공연·회차·좌석 관리</a></li>
+            <li data-manager-link hidden><a href="/manage/edit#venue-management">공연장 관리</a></li>
+            <li class="account-logout">
+                <button type="button" data-account-logout>로그아웃</button>
+                <p data-account-logout-status role="status" hidden></p>
+            </li>
+        </ul>
+    </details>
+</nav>

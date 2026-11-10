@@ -1,0 +1,170 @@
+{% extends "auth_base.html" %}
+{% block title %}내 정보{% endblock %}
+{% block heading %}내 정보{% endblock %}
+{% block introduction %}로그인한 계정의 정보를 확인하세요.{% endblock %}
+{% block head %}
+<style>
+    .profile-list { margin: 0; border-top: 1px solid #ccc; }
+    .profile-list div {
+        display: grid;
+        grid-template-columns: minmax(5rem, 1fr) minmax(0, 2.3fr);
+        align-items: baseline;
+        gap: .65rem;
+        padding: .8rem 0;
+        border-bottom: 1px solid #ccc;
+    }
+    .profile-list dt { color: var(--muted); font-size: .87rem; font-weight: 700; }
+    .profile-list dd { margin: 0; font-weight: 650; overflow-wrap: anywhere; }
+    .profile-actions { margin: 1.4rem 0 0; }
+    .profile-password { margin-top: 1.4rem; border-top: var(--line); }
+    .profile-password summary { padding: .75rem 0; font-weight: 750; cursor: pointer; }
+    .profile-password form { padding-bottom: .5rem; }
+    .profile-password small { display: block; margin-top: .3rem; color: var(--muted); }
+</style>
+{% endblock %}
+{% block content %}
+    <p class="auth-result" id="profile-status" role="status">회원 정보를 불러오는 중…</p>
+    <dl class="profile-list" id="profile-details" hidden>
+        <div><dt>회원 ID</dt><dd id="profile-user-id"></dd></div>
+        <div><dt>이름</dt><dd id="profile-name"></dd></div>
+        <div><dt>이메일</dt><dd id="profile-email"></dd></div>
+        <div><dt>전화번호</dt><dd id="profile-phone"></dd></div>
+    </dl>
+    <details class="profile-password" id="profile-password" hidden>
+        <summary>비밀번호 변경</summary>
+        <form id="password-form" method="post">
+            <p>
+                <label for="old-password">현재 비밀번호</label>
+                <input id="old-password" name="old_password" type="password"
+                       autocomplete="current-password" required>
+            </p>
+            <p>
+                <label for="new-password">새 비밀번호</label>
+                <input id="new-password" name="new_password" type="password"
+                       autocomplete="new-password" minlength="8" maxlength="72"
+                       aria-describedby="password-rules" required>
+                <small id="password-rules">영문, 숫자, 특수문자(@$!%*#?&amp;)를 포함한 8~72자</small>
+            </p>
+            <p>
+                <label for="confirm-password">새 비밀번호 확인</label>
+                <input id="confirm-password" type="password" autocomplete="new-password"
+                       minlength="8" maxlength="72" required>
+            </p>
+            <button type="submit">비밀번호 변경하기</button>
+        </form>
+        <p class="auth-result" id="password-result" role="status"></p>
+    </details>
+    <p class="profile-actions"><button id="logout-button" type="button">로그아웃</button></p>
+{% endblock %}
+{% block alternate %}공연과 좌석 <a href="/shows">공연 목록</a>{% endblock %}
+{% block script %}
+    <script>
+        const logoutButton = document.querySelector("#logout-button");
+
+        logoutButton.addEventListener("click", async () => {
+            const status = document.querySelector("#profile-status");
+            logoutButton.disabled = true;
+            try {
+                await accountSession.logout();
+            } catch (error) {
+                status.textContent = error.message;
+                logoutButton.disabled = false;
+            }
+        });
+
+        const passwordForm = document.querySelector("#password-form");
+        const passwordButton = passwordForm.querySelector('button[type="submit"]');
+        const passwordResult = document.querySelector("#password-result");
+
+        passwordForm.addEventListener("submit", async event => {
+            event.preventDefault();
+            const token = sessionStorage.getItem("asyncticket_access_token");
+            if (!token) {
+                window.location.replace("/login");
+                return;
+            }
+
+            const values = new FormData(passwordForm);
+            const newPassword = values.get("new_password");
+            if (newPassword !== document.querySelector("#confirm-password").value) {
+                passwordResult.textContent = "새 비밀번호 확인이 일치하지 않습니다.";
+                document.querySelector("#confirm-password").focus();
+                return;
+            }
+
+            passwordButton.disabled = true;
+            passwordResult.textContent = "비밀번호를 변경하는 중…";
+            try {
+                const response = await fetch("/v1/users/me/password", {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        old_password: values.get("old_password"),
+                        new_password: newPassword,
+                    }),
+                });
+                if (response.status === 401) {
+                    sessionStorage.removeItem("asyncticket_access_token");
+                    window.location.replace("/login");
+                    return;
+                }
+
+                const data = await response.json().catch(() => null);
+                if (!response.ok || data?.code !== "PASSWORD_CHANGED") {
+                    passwordResult.textContent = data?.message || "비밀번호를 변경하지 못했습니다.";
+                    return;
+                }
+
+                passwordForm.reset();
+                passwordResult.textContent = data.message;
+            } catch {
+                passwordResult.textContent = "서버에 연결할 수 없습니다. 다시 시도해 주세요.";
+            } finally {
+                passwordButton.disabled = false;
+            }
+        });
+
+        async function loadProfile() {
+            const status = document.querySelector("#profile-status");
+            const token = sessionStorage.getItem("asyncticket_access_token");
+
+            if (!token) {
+                window.location.replace("/login");
+                return;
+            }
+
+            try {
+                const response = await fetch("/v1/users/me", {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+
+                if (response.status === 401) {
+                    sessionStorage.removeItem("asyncticket_access_token");
+                    window.location.replace("/login");
+                    return;
+                }
+
+                if (!response.ok) {
+                    status.textContent = "회원 정보를 불러오지 못했습니다.";
+                    return;
+                }
+
+                const { data: user } = await response.json();
+                document.querySelector("#profile-user-id").textContent = user.user_id;
+                document.querySelector("#profile-name").textContent = user.name;
+                document.querySelector("#profile-email").textContent = user.email;
+                document.querySelector("#profile-phone").textContent = user.phone_number;
+                document.querySelector("#profile-details").hidden = false;
+                document.querySelector("#profile-password").hidden = false;
+                status.textContent = "";
+            } catch {
+                status.textContent = "회원 정보를 불러오지 못했습니다.";
+            }
+        }
+
+        loadProfile();
+    </script>
+{% endblock %}

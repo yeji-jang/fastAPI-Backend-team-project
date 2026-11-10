@@ -1,0 +1,117 @@
+{% extends "auth_base.html" %}
+{% block title %}회원가입{% endblock %}
+{% block heading %}회원가입{% endblock %}
+{% block introduction %}공연을 둘러보고 예매할 계정을 만들어 보세요.{% endblock %}
+{% block head %}
+<style>
+    .password-rules { margin: .45rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .8rem; }
+    .password-rules li + li { margin-top: .2rem; }
+    .password-rules [data-state="met"] { color: var(--ink); }
+    .password-rule-state { margin-left: .45rem; font-weight: 700; }
+</style>
+{% endblock %}
+{% block content %}
+    <form action="/signup" method="post">
+        <p>
+            <label for="email">이메일</label>
+            <input id="email" name="email" type="email" autocomplete="email" required>
+        </p>
+        <p>
+            <label for="name">이름</label>
+            <input id="name" name="name" autocomplete="name"
+                   minlength="2" maxlength="20" required>
+        </p>
+        <div>
+            <label for="password">비밀번호</label>
+            <input id="password" name="password" type="password"
+                   autocomplete="new-password" minlength="8" maxlength="72"
+                   aria-describedby="password-rules" required>
+            <ul class="password-rules" id="password-rules" aria-live="polite">
+                <li data-password-rule="length">8~72자 <span class="password-rule-state"></span></li>
+                <li data-password-rule="letter">영문자 1개 이상 <span class="password-rule-state"></span></li>
+                <li data-password-rule="digit">숫자 1개 이상 <span class="password-rule-state"></span></li>
+                <li data-password-rule="symbol">특수문자(@ $ ! % * # ? &amp;) 1개 이상 <span class="password-rule-state"></span></li>
+                <li data-password-rule="allowed">영문자·숫자·위 특수문자만 사용 <span class="password-rule-state"></span></li>
+            </ul>
+        </div>
+        <p>
+            <label for="phone_number">전화번호</label>
+            <input id="phone_number" name="phone_number" type="tel"
+                   autocomplete="tel" maxlength="30" required>
+        </p>
+        <button type="submit">가입하기</button>
+    </form>
+    <p class="auth-result" id="signup-result" role="status"></p>
+{% endblock %}
+{% block alternate %}이미 계정이 있나요? <a href="/login">로그인</a>{% endblock %}
+{% block script %}
+    <script>
+        const form = document.querySelector("form");
+        const button = form.querySelector('button[type="submit"]');
+        const result = document.querySelector("#signup-result");
+        const password = form.elements.namedItem("password");
+        const rules = document.querySelectorAll("[data-password-rule]");
+
+        function updatePasswordRules() {
+            const value = password.value;
+            const checks = {
+                length: value.length >= 8 && value.length <= 72,
+                letter: /[A-Za-z]/.test(value),
+                digit: /[0-9]/.test(value),
+                symbol: /[@$!%*#?&]/.test(value),
+                allowed: value.length > 0 && !/[^A-Za-z0-9@$!%*#?&]/.test(value),
+            };
+            const valid = Object.values(checks).every(Boolean);
+
+            for (const rule of rules) {
+                const state = value ? (checks[rule.dataset.passwordRule] ? "met" : "unmet") : "pending";
+                if (rule.dataset.state === state) continue;
+                rule.dataset.state = state;
+                rule.querySelector(".password-rule-state").textContent =
+                    state === "met" ? "✓ 충족" : state === "unmet" ? "미충족" : "";
+            }
+            if (value && !valid) {
+                password.setAttribute("aria-invalid", "true");
+            } else {
+                password.removeAttribute("aria-invalid");
+            }
+            return valid;
+        }
+
+        password.addEventListener("input", updatePasswordRules);
+        updatePasswordRules();
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            if (!updatePasswordRules()) {
+                result.textContent = "비밀번호 입력칸 아래의 조건을 확인해 주세요.";
+                password.focus();
+                return;
+            }
+            const values = Object.fromEntries(new FormData(form));
+            button.disabled = true;
+            result.textContent = "가입 처리 중…";
+
+            try {
+                const response = await fetch("/v1/users", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(values),
+                });
+                const data = await response.json().catch(() => null);
+
+                if (response.status === 201) {
+                    result.textContent = "회원가입이 완료되었습니다.";
+                    form.reset();
+                    updatePasswordRules();
+                } else {
+                    result.textContent = data?.message ?? "회원가입에 실패했습니다.";
+                }
+            } catch {
+                result.textContent = "서버에 연결할 수 없습니다.";
+            } finally {
+                button.disabled = false;
+            }
+        });
+    </script>
+{% endblock %}
