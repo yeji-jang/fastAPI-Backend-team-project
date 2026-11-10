@@ -18,6 +18,7 @@
         2) 예매 취소
         3) 상태 저장 (DB가 예매확정일 때만, 아니면 409)
         4) 좌석 해제
+        5) 결제 환불 (토스 호출이라 맨 마지막, 실패하면 전체 rollback!)
     5. 예매 조회 (본인 예매 단건, 목록)
         1) 예매 조회
         2) 본인 예매만 조회
@@ -47,8 +48,13 @@ from asyncticket.reservations.domain.service import (
 )
 
 # <Application - 예매>
-from asyncticket.reservations.application.ports import SeatAllocation
+from asyncticket.reservations.application.ports import (
+    SeatAllocation,
+    PaymentRefund
+)
 
+# 예매 취소 시 결제 환불 사유 - 토스 취소 요청에 필수
+CANCEL_REFUND_REASON = "사용자 예매 취소"
 
 class ReservationService:
     """예매 서비스"""
@@ -60,12 +66,14 @@ class ReservationService:
         performance_reader : ReservedPerformanceReader,
         seat_reader : ReservedSeatReader,
         seat_allocation : SeatAllocation,
+        payment_refund : PaymentRefund,
     ) : 
         self.repository = repository
         self.checker = checker
         self.performance_reader = performance_reader
         self.seat_reader = seat_reader
         self.seat_allocation = seat_allocation
+        self.payment_refund = payment_refund
 
 
     # 예매 ID로 조회, 없으면 404 (확정·취소·조회 공통)
@@ -192,7 +200,13 @@ class ReservationService:
 
         # 4) 좌석 해제 (좌석 연결이 남아 있을 때만)
         await self._release_seat(reservation)
-        
+
+        # 5) 결제 환불 (토스 호출이라 맨 마지막, 실패하면 예외 -> 취소, 좌석 해제까지 rollback)
+        await self.payment_refund.refund(
+            reserv_id=reservation.reserv_id,
+            reason=CANCEL_REFUND_REASON
+        )
+
         return reservation
 
     # 5-1. 예매 조회 : 본인 예매 단건
