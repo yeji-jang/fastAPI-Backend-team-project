@@ -1,59 +1,50 @@
 {% extends "catalog_base.html" %}
 {% block title %}내 예매{% endblock %}
-{% block head %}{% include "catalog_detail_styles.html" %}{% endblock %}
+{% block head %}
+{% include "catalog_detail_styles.html" %}
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='venues.css').path }}">
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='my_reservations.css').path }}">
+{% endblock %}
 {% block content %}
-<div class="detail-page">
-    <header class="detail-header">
-        <p class="detail-kicker">MY TICKETS</p>
-        <h1>내 예매</h1>
+<div class="detail-page venue-page ticket-page">
+    <header class="venue-hero">
+        <div class="venue-hero-copy">
+            <p class="detail-kicker">ASYNC TICKET / MY TICKETS</p>
+            <h1>기다려온 무대,<br>나의 한 자리.</h1>
+            <p>골라둔 자리부터 확정된 예매까지.<br>나의 다음 공연을 여기서 확인하세요.</p>
+            <a class="venue-button" href="/shows">다음 공연 둘러보기 ↗</a>
+        </div>
+        <figure class="venue-cover ticket-cover">
+            <img src="{{ url_for('venue_assets', path='audience.jpg').path }}" alt="공연의 시작을 기다리는 관객들" width="1536" height="1024">
+            <figcaption>YOUR NEXT LIVE MOMENT · 연출 이미지</figcaption>
+        </figure>
     </header>
-    <p id="reservation-status" role="status">예매 내역을 불러오는 중…</p>
-    <p id="reservation-login" hidden><a href="/login">로그인</a></p>
-    <ul id="reservation-list"></ul>
+    <dl class="ticket-summary" aria-label="내 예매 요약">
+        <div><dt>전체 예매</dt><dd id="ticket-total">—</dd></div>
+        <div><dt>결제 대기</dt><dd id="ticket-pending">—</dd></div>
+        <div><dt>예매 확정</dt><dd id="ticket-confirmed">—</dd></div>
+    </dl>
+    <section aria-labelledby="tickets-title">
+        <div class="venue-section-heading"><div><p class="detail-kicker">01 / MY RESERVATIONS</p><h2 id="tickets-title">내 예매 목록</h2></div><span id="ticket-page-label"></span></div>
+        <div id="ticket-controls" class="ticket-toolbar" hidden>
+            <div class="ticket-filters" role="group" aria-label="예매 상태 선택">
+                <button class="ticket-filter" type="button" data-filter="ALL" aria-pressed="true">전체</button>
+                <button class="ticket-filter" type="button" data-filter="PENDING" aria-pressed="false">결제 대기</button>
+                <button class="ticket-filter" type="button" data-filter="CONFIRMED" aria-pressed="false">예매 확정</button>
+                <button class="ticket-filter" type="button" data-filter="CLOSED" aria-pressed="false">취소·만료</button>
+            </div>
+            <label class="ticket-search"><span>예매 검색</span><input id="ticket-search" type="search" placeholder="공연명·예매번호로 찾기" maxlength="255"></label>
+        </div>
+        <p id="reservation-status" class="venue-status" role="status" aria-live="polite">예매 내역을 불러오는 중…</p>
+        <p id="reservation-login" hidden><a class="venue-button" href="/login?next=%2Fme%2Freservations">로그인하고 내 예매 보기 ↗</a></p>
+        <button id="reservation-retry" class="venue-button" type="button" hidden>다시 불러오기 ↻</button>
+        <ul id="reservation-list" class="ticket-directory" aria-label="내 예매 목록" aria-busy="true"></ul>
+        <div id="ticket-empty" class="ticket-empty" hidden><p>아직 나를 기다리는 공연이 없나요?</p><a href="/shows">공연 둘러보기 ↗</a></div>
+    </section>
+    <footer class="venue-footer"><span>ASYNC TICKET / MY TICKETS</span><a href="/venues">공연장 둘러보기 ↗</a></footer>
 </div>
 {% endblock %}
 {% block script %}
-<script>
-    document.addEventListener("DOMContentLoaded", async () => {
-        const status = document.querySelector("#reservation-status");
-        try {
-            const user = await accountSession.current();
-            if (!user) {
-                status.textContent = "로그인하면 내 예매 내역을 볼 수 있어요.";
-                document.querySelector("#reservation-login").hidden = false;
-                return;
-            }
-            if (user.role !== "BUYER") {
-                status.textContent = "예매자 계정에서 이용할 수 있어요.";
-                return;
-            }
-            const data = await requestApi("/v1/reservations", { headers: accountSession.headers(), cache: "no-store" });
-            const records = Array.isArray(data) ? data : data?.items;
-            if (!Array.isArray(records)) throw new Error("예매 내역을 불러오지 못했습니다.");
-
-            const list = document.querySelector("#reservation-list");
-            for (const record of records) {
-                const item = document.createElement("li");
-                item.textContent = [record.order_number, record.status].filter(Boolean).join(" · ");
-                const amount = document.createElement("span");
-                amount.textContent = ` · ${Number(record.total_amount).toLocaleString("ko-KR")}원 `;
-                item.append(amount);
-                if (record.status === "PENDING") {
-                    const pay = document.createElement("a");
-                    pay.href = `/checkout/${encodeURIComponent(record.reserv_id)}`;
-                    pay.textContent = "결제 이어하기";
-                    item.append(pay);
-                }
-                const detail = document.createElement("a");
-                detail.href = `/performances/${encodeURIComponent(record.perf_id)}`;
-                detail.textContent = " 회차 보기";
-                item.append(detail);
-                list.append(item);
-            }
-            status.textContent = records.length ? "" : "아직 예매 내역이 없어요.";
-        } catch (error) {
-            status.textContent = error.message;
-        }
-    });
-</script>
+<script src="{{ url_for('venue_assets', path='booking.js').path }}"></script>
+<script src="{{ url_for('venue_assets', path='my_reservations.js').path }}" defer></script>
 {% endblock %}
