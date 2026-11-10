@@ -74,6 +74,7 @@ for (const nav of document.querySelectorAll("[data-account-nav]")) {
         summary.textContent = `${user.role === "ADMIN" ? "Admin" : user.name}님`;
         nav.querySelector("[data-buyer-link]").hidden = user.role !== "BUYER";
         for (const item of nav.querySelectorAll("[data-manager-link]")) item.hidden = !manager;
+        for (const item of nav.querySelectorAll("[data-admin-link]")) item.hidden = user.role !== "ADMIN";
         guest.hidden = true;
         menu.hidden = false;
     }).catch(() => { /* 계정 조회가 실패하면 로그인 메뉴를 유지한다. */ });
