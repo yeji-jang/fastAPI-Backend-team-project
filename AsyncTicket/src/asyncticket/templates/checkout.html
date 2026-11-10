@@ -1,54 +1,42 @@
 {% extends "catalog_base.html" %}
-{% block title %}예매 결제{% endblock %}
-{% block head %}{% include "catalog_detail_styles.html" %}<meta name="referrer" content="no-referrer">{% endblock %}
+{% block title %}결제 확인{% endblock %}
+{% block head %}
+{% include "catalog_detail_styles.html" %}
+<meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='venues.css').path }}">
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='checkout.css').path }}">
+{% endblock %}
 {% block content %}
-<main class="detail-page">
-    <header class="detail-header"><p class="detail-kicker">CHECKOUT</p><h1>예매 결제</h1></header>
-    <p id="checkout-status" role="status">예매를 확인하는 중…</p>
-    <dl id="checkout-summary" hidden><dt>주문번호</dt><dd id="checkout-order"></dd><dt>결제 금액</dt><dd id="checkout-amount"></dd></dl>
-    <button id="pay" type="button" disabled>토스페이먼츠 결제창 열기</button>
-    <p><a href="/me/reservations">내 예매 내역</a></p>
-</main>
+<div class="detail-page venue-page checkout-page" data-reservation-id="{{ reserv_id }}">
+    <header class="detail-header"><p class="detail-kicker">ASYNC TICKET / CHECKOUT</p><h1>결제 확인</h1><p class="checkout-intro">선택한 공연과 좌석을 확인하고, 나의 한 자리를 완성하세요.</p></header>
+    <div class="checkout-layout">
+        <figure class="checkout-poster">
+            <img src="{{ url_for('venue_assets', path='after-hours.jpg').path }}" alt="작은 재즈 무대의 연출 이미지" width="1024" height="1536">
+            <div class="checkout-poster-top"><span>LIVE IN THE ROOM</span><span id="poster-genre">LIVE</span></div>
+            <figcaption><span id="poster-title">YOUR NEXT<br>LIVE MOMENT</span><span id="poster-performer"></span></figcaption>
+            <div class="checkout-poster-bottom"><span>ASYNC TICKET</span><span>연출 이미지</span></div>
+        </figure>
+        <section class="checkout-info" aria-labelledby="checkout-title">
+            <p class="detail-kicker">01 / YOUR RESERVATION</p>
+            <h2 id="checkout-title">예매 정보를 확인하는 중…</h2>
+            <p id="checkout-performer" class="checkout-subtitle"></p>
+            <dl id="checkout-summary" hidden>
+                <div><dt>공연장</dt><dd id="checkout-venue">확인 중…</dd></div>
+                <div><dt>공연 일시</dt><dd id="checkout-date">확인 중…</dd></div>
+                <div><dt>선택 좌석</dt><dd id="checkout-seat">확인 중…</dd></div>
+                <div class="checkout-order-row"><dt>주문번호</dt><dd id="checkout-order"></dd></div>
+                <div class="checkout-total"><dt>총 결제 금액</dt><dd id="checkout-amount"></dd></div>
+            </dl>
+            <p id="checkout-detail-status" class="checkout-note" role="status"></p>
+            <p id="checkout-status" class="checkout-note" role="status" aria-live="polite">예매를 확인하는 중…</p>
+            <button id="pay" class="venue-button checkout-pay" type="button" disabled>결제하기 ↗</button>
+            <p class="checkout-payment-note">토스페이먼츠 결제창에서 결제를 진행합니다.</p>
+            <a class="checkout-back" href="/me/reservations">← 내 예매 목록으로 돌아가기</a>
+        </section>
+    </div>
+</div>
 {% endblock %}
 {% block script %}
 <script src="{{ url_for('venue_assets', path='booking.js').path }}"></script>
-<script>
-const reservationId = {{ reserv_id | tojson }};
-const payButton = document.querySelector("#pay");
-const checkoutStatus = document.querySelector("#checkout-status");
-
-async function loadCheckout() {
-    try {
-        await bookingGateway.buyer();
-        const currentReservation = await bookingGateway.request(`/v1/reservations/${reservationId}`);
-        if (currentReservation.status !== "PENDING") {
-            checkoutStatus.textContent = currentReservation.status === "CONFIRMED" ? "이미 확정된 예매입니다." : "결제를 진행할 수 없는 예매입니다.";
-            return;
-        }
-        document.querySelector("#checkout-order").textContent = currentReservation.order_number;
-        document.querySelector("#checkout-amount").textContent = `${Number(currentReservation.total_amount).toLocaleString("ko-KR")}원`;
-        document.querySelector("#checkout-summary").hidden = false;
-        const clientKey = (await bookingGateway.config()).toss_client_key;
-        if (!clientKey) throw new Error("현재 온라인 결제를 이용할 수 없습니다. 잠시 후 내 예매에서 다시 시도해 주세요.");
-        checkoutStatus.textContent = "결제창에서 결제를 진행해 주세요.";
-        payButton.disabled = false;
-    } catch (error) { checkoutStatus.textContent = error.message; }
-}
-
-payButton.addEventListener("click", async () => {
-    payButton.disabled = true;
-    try {
-        checkoutStatus.textContent = "결제창을 준비하는 중…";
-        await bookingGateway.resumePayment(reservationId);
-        checkoutStatus.textContent = "결제창 안내를 확인해 주세요.";
-    } catch (error) {
-        checkoutStatus.textContent = error.code === "USER_CANCEL"
-            ? "결제창을 닫았어요. 다시 이어서 결제할 수 있어요."
-            : error.message || "결제 요청을 처리하지 못했습니다.";
-    } finally {
-        payButton.disabled = false;
-    }
-});
-document.addEventListener("DOMContentLoaded", loadCheckout, { once: true });
-</script>
+<script src="{{ url_for('venue_assets', path='checkout.js').path }}" defer></script>
 {% endblock %}
