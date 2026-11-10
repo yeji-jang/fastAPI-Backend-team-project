@@ -2,11 +2,18 @@
 
 # 함수를 "시작 → yield → 종료" 구조의 컨텍스트 매니저로 만들어 주는 데코레이터
 import asyncio
+import hashlib
+import json
 from contextlib import asynccontextmanager, suppress
+from functools import partial
 from pathlib import Path
+from uuid import uuid4
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+from fastapi_cache import FastAPICache
+from fastapi_cache.backends.inmemory import InMemoryBackend
 from fastapi.staticfiles import StaticFiles
 
 from asyncticket.web import router as web_router
@@ -45,6 +52,54 @@ from asyncticket.payment.presentation.routers.v1.router import router as payment
 logger = get_logger("app.main")
 
 
+# 교안의 fastapi-cache2 인메모리 캐시. 원본 DB와 업무 판정은 기존 경로를 유지한다.
+CATALOG_CACHE_PREFIX = "asyncticket:catalog:v1"
+CATALOG_CACHE_NAMESPACES = ("shows", "performances")
+
+
+def catalog_cache_key_builder(func, namespace: str = "", *, args=(), kwargs=None, **_) -> str:
+    """요청마다 바뀌는 서비스 객체 대신 검증된 조회 조건으로 키를 만든다."""
+    values = dict(kwargs or {})
+    values.pop("service", None)
+    scope = values.pop("cache_scope")
+    generation = values.pop("cache_generation")
+    query = json.dumps(jsonable_encoder(values), sort_keys=True, ensure_ascii=False)
+    digest = hashlib.sha256(query.encode("utf-8")).hexdigest()
+    return f"{namespace}:{scope}:{generation}:{func.__module__}.{func.__name__}:{digest}"
+
+
+def init_catalog_cache(app: FastAPI) -> None:
+    """실제 서버 시작 시 프로세스 메모리 캐시를 준비한다. 외부 연결은 없다."""
+    FastAPICache.init(
+        InMemoryBackend(), prefix=CATALOG_CACHE_PREFIX,
+        key_builder=catalog_cache_key_builder,
+    )
+    app.state.catalog_cache_enabled = True
+    logger.info("공연·회차 인메모리 조회 캐시 활성화")
+
+
+async def invalidate_catalog_cache(app: FastAPI, *namespaces: str) -> None:
+    """DB commit 후 키 세대를 바꿔 이전 조회가 늦게 저장돼도 재사용하지 않는다."""
+    if not app.state.catalog_cache_enabled:
+        return
+    for namespace in namespaces:
+        app.state.catalog_cache_generations[namespace] += 1
+        prefix = f"{FastAPICache.get_prefix()}:{namespace}:{app.state.catalog_cache_scope}:"
+        try:
+            await FastAPICache.get_backend().clear(namespace=prefix)
+        except Exception:
+            # 캐시 정리가 이미 성공한 DB 저장을 실패로 바꾸면 안 된다.
+            logger.warning("조회 캐시 삭제 실패: namespace=%s", namespace, exc_info=True)
+
+
+async def clear_catalog_cache(app: FastAPI) -> None:
+    """종료하는 앱의 키만 정리한다. 같은 프로세스의 다른 앱 설정은 보존한다."""
+    if not app.state.catalog_cache_enabled:
+        return
+    await invalidate_catalog_cache(app, *CATALOG_CACHE_NAMESPACES)
+    app.state.catalog_cache_enabled = False
+
+
 # 서버 시작/종료 시 실행할 작업 정의
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -58,6 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+        init_catalog_cache(app)
         logger.info("애플리케이션 준비 완료")
         expiry_task = asyncio.create_task(run_reservation_expiry())  # 예매 만료 작업 시작
 
@@ -70,7 +126,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             expiry_task.cancel() 
             with suppress(asyncio.CancelledError):     
                 await expiry_task                        
-        await close_db()
+        try:
+            await clear_catalog_cache(app)
+        finally:
+            await close_db()
 
 
 def create_app(
@@ -87,6 +146,10 @@ def create_app(
     # 앱마다 설정을 분리한다. 인증기 미지정 시 wiring에서 공통 JWT 인증을 연결한다.
     app.state.catalog_authenticator = authenticator
     app.state.catalog_policy = policy if policy is not None else CatalogPolicy()
+    app.state.catalog_cache_enabled = False
+    app.state.catalog_cache_scope = uuid4().hex
+    app.state.catalog_cache_generations = {name: 0 for name in CATALOG_CACHE_NAMESPACES}
+    app.state.invalidate_catalog_cache = partial(invalidate_catalog_cache, app)
     register_exception_handlers(app)
     register_catalog_errors(app)
     register_reservation_errors(app)

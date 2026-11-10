@@ -35,8 +35,12 @@ class PerformanceApplicationService:
             raise PerformanceNotFoundError("공연 회차를 찾을 수 없습니다.")
         return performance
 
-    async def find_all(self, show_id: int, on_date: date | None) -> list[Performance]:
+    async def ensure_show_exists(self, show_id: int) -> None:
+        """공개 회차 목록의 캐시 hit에서도 부모 공연의 존재를 확인한다."""
         await self._show_service.find_by_id(show_id)
+
+    async def find_all(self, show_id: int, on_date: date | None) -> list[Performance]:
+        await self.ensure_show_exists(show_id)
         starts_from = starts_until = None
         if on_date is not None:
             # 라우터 외의 호출도 Python datetime 범위를 벗어나지 않게 검사한다.
