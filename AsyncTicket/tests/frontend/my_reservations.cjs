@@ -103,7 +103,7 @@ async function run() {
     {
         const test = fixture({ detailFailure: true }); await test.ready();
         assert.equal(test.get('reservation-list').children.length, 4);
-        assert.equal(descendants(test.get('reservation-list').children[0]).some(node => node.tag === 'button'), true);
+        assert.equal(descendants(test.get('reservation-list').children[0]).some(node => node.textContent === '결제 이어하기' && node.tag === 'a'), true);
         passed.push('공연 상세 조회 실패해도 예매·결제 버튼 유지');
     }
     {
@@ -113,32 +113,16 @@ async function run() {
         passed.push('예매 API 오류의 재시도 안내');
     }
     {
-        const test = fixture({ onPayment: async () => { throw Object.assign(new Error('USER_CANCEL'), { code: 'USER_CANCEL' }); } });
-        await test.ready();
-        const nodes = descendants(test.get('reservation-list').children[0]);
-        const button = nodes.find(node => node.tag === 'button');
-        assert.equal(button.href, undefined);
-        await button.handlers.click();
-        assert.deepEqual(test.resumed, [7]);
-        assert.equal(button.disabled, false);
-        assert.match(nodes.find(node => node.attributes.role === 'status').textContent, /결제창을 닫았어요/);
-        passed.push('결제 이어하기 직접 호출과 취소 후 버튼 복구');
-    }
-    {
-        let entered, release;
-        const opened = new Promise(resolve => { entered = resolve; });
-        const done = new Promise(resolve => { release = resolve; });
-        const records = [7, 8].map(reserv_id => ({ reserv_id, perf_id: 1, perf_seat_id: 11, total_amount: '1000.00', status: 'PENDING' }));
-        const test = fixture({ records, onPayment: async () => { entered(); await done; } });
-        await test.ready();
-        const buttons = descendants(test.get('reservation-list')).filter(node => node.tag === 'button');
-        const payment = buttons[0].handlers.click(); await opened;
-        assert.equal(buttons.every(button => button.disabled), true);
-        await buttons[1].handlers.click();
-        assert.deepEqual(test.resumed, [7]);
-        release(); await payment;
-        assert.equal(buttons.every(button => !button.disabled), true);
-        passed.push('결제창 진행 중 다른 예매의 결제 버튼도 잠금');
+        const test = fixture(); await test.ready();
+        const rows = test.get('reservation-list').children;
+        const pay = descendants(rows[0]).find(node => node.textContent === '결제 이어하기');
+        assert.equal(pay.tag, 'a');
+        assert.equal(pay.href, '/checkout/7');
+        assert.deepEqual(test.resumed, []);
+        for (const row of rows.slice(1)) {
+            assert.equal(descendants(row).some(node => node.textContent === '결제 이어하기'), false);
+        }
+        passed.push('대기 예매만 기존 예매의 결제 확인 화면으로 연결하며 토스 직접 호출하지 않음');
     }
     return passed;
 }

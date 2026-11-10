@@ -7,7 +7,6 @@ document.addEventListener("DOMContentLoaded", () => {
     let selected = "ALL";
     let views = [];
     let loading = false;
-    let paymentBusy = false;
     const details = new Map();
 
     function text(tag, className, value) {
@@ -39,11 +38,6 @@ document.addEventListener("DOMContentLoaded", () => {
             : !visible ? "선택한 조건에 맞는 예매가 없어요." : "";
     }
 
-    function setPaymentBusy(value) {
-        paymentBusy = value;
-        for (const view of views) if (view.pay) view.pay.disabled = value;
-    }
-
     function render(record, index) {
         const item = text("li", "ticket-row", "");
         const main = text("div", "ticket-main", "");
@@ -57,9 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const venue = text("p", "ticket-venue", "공연장 정보를 확인하는 중…");
         const seat = text("p", "ticket-seat", record.perf_seat_id == null ? "좌석 정보 없음" : `좌석 #${record.perf_seat_id}`);
         const note = text("p", "ticket-note", "");
-        const feedback = text("p", "ticket-note", "");
-        feedback.setAttribute("role", "status");
-        main.append(top, title, date, venue, seat, note, feedback);
+        main.append(top, title, date, venue, seat, note);
         const side = text("div", "ticket-side", "");
         const amount = Number(record.total_amount);
         const amountLabel = Number.isFinite(amount) && amount >= 0 && record.total_amount != null
@@ -67,24 +59,8 @@ document.addEventListener("DOMContentLoaded", () => {
         side.append(text("p", "ticket-price-label", "예매 금액"), text("p", "ticket-price", amountLabel));
         const view = { item, record, title, date, venue, seat, note };
         if (record.status === "PENDING") {
-            const pay = text("button", "venue-button", "결제 이어하기");
-            pay.type = "button";
-            pay.addEventListener("click", async () => {
-                if (paymentBusy) return;
-                setPaymentBusy(true);
-                feedback.textContent = "토스 결제창을 여는 중…";
-                try {
-                    await bookingGateway.resumePayment(record.reserv_id);
-                    feedback.textContent = "";
-                } catch (error) {
-                    feedback.textContent = error.code === "USER_CANCEL"
-                        ? "결제창을 닫았어요. 다시 이어서 결제할 수 있어요."
-                        : error.message || "결제창을 열지 못했습니다.";
-                } finally {
-                    setPaymentBusy(false);
-                }
-            });
-            view.pay = pay;
+            const pay = text("a", "venue-button", "결제 이어하기");
+            pay.href = `/checkout/${encodeURIComponent(record.reserv_id)}`;
             side.append(pay);
         }
         const detail = text("a", "ticket-detail", "회차·좌석 보기 ↗");
