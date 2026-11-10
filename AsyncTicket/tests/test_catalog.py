@@ -18,6 +18,7 @@ from asyncticket.wiring.performances import provide_performance_service
 from asyncticket.wiring.shows import provide_show_service
 from asyncticket.main import create_app
 from asyncticket.performances.application.service import PerformanceApplicationService
+from asyncticket.performances.infrastructure.adapter_show import ShowServiceAdapter
 from asyncticket.performances.infrastructure.models import PerformanceModel
 from asyncticket.performances.infrastructure.repositories import SqlAlchemyPerformanceRepository
 from asyncticket.shows.application.service import ShowApplicationService
@@ -203,7 +204,7 @@ class CatalogApiTests(unittest.IsolatedAsyncioTestCase):
         self.uow = SqlAlchemyCatalogUnitOfWork(adapter)
         self.policy = CatalogPolicy()
         self.shows = ShowApplicationService(SqlAlchemyShowRepository(adapter), self.relations, self.uow, self.policy)
-        self.performances = PerformanceApplicationService(SqlAlchemyPerformanceRepository(adapter), self.shows, self.relations, self.uow, self.policy)
+        self.performances = PerformanceApplicationService(SqlAlchemyPerformanceRepository(adapter), ShowServiceAdapter(self.shows), self.relations, self.uow, self.policy)
         self.app = create_app(authenticator=FixtureAuthenticator())
         self.app.dependency_overrides[provide_show_service] = lambda: self.shows
         self.app.dependency_overrides[provide_performance_service] = lambda: self.performances

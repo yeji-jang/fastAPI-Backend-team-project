@@ -13,6 +13,7 @@ from sqlalchemy.dialects import postgresql
 import test_catalog as fixtures
 import asyncticket.main as main_module
 from asyncticket.main import create_app
+from asyncticket.performances.application.ports import ShowAccess, ShowReference
 from asyncticket.performances.application.service import PerformanceApplicationService
 from asyncticket.performances.infrastructure.models import PerformanceModel
 from asyncticket.performances.infrastructure.repositories import SqlAlchemyPerformanceRepository
@@ -41,7 +42,7 @@ class AppRegistrationTests(unittest.TestCase):
         self.assertIn("get", paths["/v1/venues/list"])
 
 
-class OnlyShowAccess:
+class OnlyShowAccess(ShowAccess):
     """A collaborator with the two required methods, without show CRUD methods."""
 
     __slots__ = ("show", "calls")
@@ -52,11 +53,11 @@ class OnlyShowAccess:
 
     async def find_by_id(self, show_id, *, for_update=False):
         self.calls.append("find_by_id")
-        return self.show
+        return ShowReference(show_id=self.show.show_id)
 
     async def authorize_owner(self, show_id, actor):
         self.calls.append("authorize_owner")
-        return self.show
+        return ShowReference(show_id=self.show.show_id)
 
 
 class TracedSession(fixtures.AsyncSessionAdapter):
