@@ -1,0 +1,104 @@
+{% extends "catalog_base.html" %}
+{% block title %}공연장 목록{% endblock %}
+{% block head %}
+{% include "catalog_detail_styles.html" %}
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='venues.css').path }}">
+{% endblock %}
+{% block content %}
+<div class="detail-page venue-page">
+    <header class="venue-hero">
+        <div class="venue-hero-copy">
+            <p class="detail-kicker">ASYNC TICKET / VENUES</p>
+            <h1>무대를<br>만나는 곳.</h1>
+            <p>공연장을 둘러보고, 그곳에서 열리는 공연을 만나보세요.</p>
+            <a class="venue-button" href="#venue-directory">공연장 둘러보기 ↘</a>
+        </div>
+        <figure class="venue-cover">
+            <img src="{{ url_for('venue_assets', path='audience.jpg').path }}" alt="무대를 바라보는 관객들의 뒷모습" width="1536" height="1024">
+            <figcaption>THE ROOM, THE STAGE, THE AUDIENCE · 연출 이미지</figcaption>
+        </figure>
+    </header>
+    <section id="venue-directory" aria-labelledby="directory-title">
+        <div class="venue-section-heading"><div><p class="detail-kicker">01 / DIRECTORY</p><h2 id="directory-title">공연장 목록</h2></div><span id="venue-page-label"></span></div>
+        <form class="venue-search" action="/venues" method="get" role="search" aria-label="공연장 검색">
+            <label>공연장명<input type="search" name="name" maxlength="255" placeholder="공연장 이름"></label>
+            <label>지역·주소<input type="search" name="address" maxlength="255" placeholder="예: 서울, 마포구"></label>
+            <button class="venue-button" type="submit">검색 ↗</button>
+            <a class="venue-reset" href="/venues">전체 보기</a>
+        </form>
+        <p id="venues-status" class="venue-status" role="status" aria-live="polite">공연장을 불러오는 중…</p>
+        <button id="venues-retry" class="venue-button" type="button" hidden>다시 불러오기</button>
+        <ul id="venues-list" class="venue-directory" aria-label="공연장 목록" aria-busy="true"></ul>
+        <nav class="venue-pagination" aria-label="공연장 목록 페이지"><a id="previous" hidden>← 이전</a><a id="next" hidden>다음 →</a></nav>
+    </section>
+    <footer class="venue-footer"><span>ASYNC TICKET / VENUES</span><a href="/shows">공연 둘러보기 ↗</a></footer>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+    const venueQuery = new URLSearchParams(location.search);
+    const requestedPage = Number(venueQuery.get("page"));
+    const venuePage = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const venuePageSize = 20;
+    for (const key of ["name", "address"]) {
+        document.querySelector(`.venue-search [name="${key}"]`).value = venueQuery.get(key) || "";
+    }
+    function venueText(tag, className, text) {
+        const node = document.createElement(tag);
+        node.className = className;
+        node.textContent = text;
+        return node;
+    }
+    async function loadVenues() {
+        const status = document.querySelector("#venues-status");
+        const list = document.querySelector("#venues-list");
+        const retry = document.querySelector("#venues-retry");
+        list.replaceChildren();
+        list.setAttribute("aria-busy", "true");
+        retry.hidden = true;
+        status.textContent = "공연장을 불러오는 중…";
+        for (const id of ["previous", "next"]) document.getElementById(id).hidden = true;
+        const params = new URLSearchParams({ page: venuePage, page_size: venuePageSize });
+        for (const key of ["name", "address"]) {
+            const value = venueQuery.get(key)?.trim();
+            if (value) params.set(key, value);
+        }
+        function pageLink(id, page) {
+            const query = new URLSearchParams(params);
+            query.delete("page_size");
+            query.set("page", page);
+            const link = document.getElementById(id);
+            link.href = `/venues?${query}`;
+            link.hidden = false;
+        }
+        try {
+            const venues = await requestApi(`/v1/venues/list?${params}`);
+            if (!Array.isArray(venues)) throw new Error("공연장 목록을 확인할 수 없습니다. 다시 시도해주세요.");
+            for (const [index, venue] of venues.entries()) {
+                const item = document.createElement("li");
+                const link = document.createElement("a");
+                link.href = `/venues/${venue.venues_id}`;
+                link.className = "venue-row";
+                const copy = document.createElement("span");
+                copy.append(venueText("strong", "venue-row-name", venue.name), venueText("span", "venue-row-address", [venue.address, venue.address_detail].filter(Boolean).join(" · ") || "주소 미등록"));
+                link.append(venueText("span", "venue-row-number", String((venuePage - 1) * venuePageSize + index + 1).padStart(2, "0")), copy, venueText("span", "venue-row-arrow", "상세 보기 ↗"));
+                item.append(link);
+                list.append(item);
+            }
+            document.querySelector("#venue-page-label").textContent = `${venuePage} 페이지 · ${venues.length}개 공연장`;
+            if (venuePage > 1) pageLink("previous", venuePage - 1);
+            if (venues.length === venuePageSize) pageLink("next", venuePage + 1);
+            status.textContent = venues.length ? "" : (params.has("name") || params.has("address") ? "검색 결과가 없습니다. 다른 이름이나 지역으로 검색해보세요." : "이 페이지에 등록된 공연장이 없습니다.");
+        } catch (error) {
+            document.querySelector("#venue-page-label").textContent = "";
+            status.textContent = error.message;
+            retry.hidden = false;
+            if (venuePage > 1) pageLink("previous", venuePage - 1);
+        } finally {
+            list.setAttribute("aria-busy", "false");
+        }
+    }
+    document.querySelector("#venues-retry").addEventListener("click", loadVenues);
+    loadVenues();
+</script>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "auth_base.html" %}
+{% block title %}로그인{% endblock %}
+{% block heading %}로그인{% endblock %}
+{% block introduction %}가입한 이메일과 비밀번호를 입력해 주세요.{% endblock %}
+{% block content %}
+    <form id="login-form" method="post">
+        <p>
+            <label for="email">이메일</label>
+            <input id="email" name="email" type="email"
+                   autocomplete="username" required>
+        </p>
+        <p>
+            <label for="password">비밀번호</label>
+            <input id="password" name="password" type="password"
+                   autocomplete="current-password" required>
+        </p>
+        <button type="submit">로그인</button>
+    </form>
+    <p class="auth-result" id="login-result" role="status"></p>
+{% endblock %}
+{% block alternate %}처음이신가요? <a href="/signup">회원가입</a>{% endblock %}
+{% block script %}
+    <script>
+        const form = document.querySelector("#login-form");
+        const button = form.querySelector('button[type="submit"]');
+        const result = document.querySelector("#login-result");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            button.disabled = true;
+            result.textContent = "로그인 중…";
+
+            try {
+                const response = await fetch("/v1/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(Object.fromEntries(new FormData(form))),
+                });
+                const data = await response.json().catch(() => null);
+
+                if (response.ok && data?.code === "LOGIN_SUCCESS") {
+                    sessionStorage.setItem("asyncticket_access_token", data.data.access_token);
+                    const next = new URLSearchParams(window.location.search).get("next");
+                    const destination = next ? new URL(next, window.location.origin) : null;
+                    window.location.replace(destination?.origin === window.location.origin ? destination.href : "/");
+                } else {
+                    result.textContent = data?.message ?? "로그인에 실패했습니다.";
+                }
+            } catch {
+                result.textContent = "서버에 연결할 수 없습니다.";
+            } finally {
+                button.disabled = false;
+            }
+        });
+    </script>
+{% endblock %}

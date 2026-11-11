@@ -1,0 +1,38 @@
+{% extends "catalog_base.html" %}
+{% block title %}예매·결제 관리{% endblock %}
+{% block head %}
+{% include "catalog_detail_styles.html" %}
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='venues.css').path }}">
+<link rel="stylesheet" href="{{ url_for('venue_assets', path='manage_bookings.css').path }}">
+{% endblock %}
+{% block content %}
+<div class="detail-page venue-page booking-admin">
+    <header class="detail-header"><p class="detail-kicker">ASYNC TICKET / ADMIN DESK</p><h1>예매·결제 관리</h1><p>시스템이 처리한 예매·결제 상태를 한곳에서 확인하세요.</p><a href="/manage">공연·회차·좌석 관리 ↗</a></header>
+    <p id="booking-admin-status" role="status" aria-live="polite">관리 권한을 확인하는 중…</p>
+    <a id="booking-admin-login" href="/login?next=%2Fmanage%2Fbookings" hidden>로그인하고 계속하기 ↗</a>
+    <section id="booking-admin-panel" hidden aria-label="예매·결제 조회">
+        <aside class="admin-system-guide" aria-label="예매·결제 상태 처리 안내">
+            <p class="detail-kicker">SYSTEM MANAGED / 조회 전용</p>
+            <p>결제 승인 시 예매 확정 · 구매자 취소 시 환불 및 좌석 해제 · 결제 대기 시간 초과 시 예매 만료</p>
+            <p>결제 상태는 결제 서비스가 기록한 결과를 표시합니다. 결제 대기·완료·실패·환불 내역을 조회할 수 있습니다.</p>
+            <p>예매 상태와 결제 상태는 각각 조회합니다. 관리자가 이 화면에서 결제를 승인하거나 상태를 변경하지 않습니다.</p>
+        </aside>
+        <p id="booking-admin-connection" class="admin-notice" role="status"></p>
+        <form id="booking-admin-search" class="admin-filters">
+            <label>예매 검색<input name="query" type="search" placeholder="예매번호·공연명" maxlength="255"></label>
+            <label>예매 상태<select name="reservation_status"><option value="">전체</option><option value="PENDING">결제 대기</option><option value="CONFIRMED">예매 확정</option><option value="CANCELED">예매 취소</option><option value="EXPIRED">예매 만료</option></select></label>
+            <label>결제 상태<select name="payment_status"><option value="">전체</option><option value="READY">결제 대기</option><option value="DONE">결제 완료</option><option value="FAIL">결제 실패</option><option value="REFUND">환불 완료</option></select></label>
+            <button class="venue-button" type="submit" disabled>조회하기 ↗</button>
+        </form>
+        <div class="admin-list-heading"><h2>예매 내역</h2><span id="booking-admin-count">조회 전</span></div>
+        <div class="admin-refresh"><span id="booking-admin-updated">아직 조회하지 않았습니다.</span><button id="booking-admin-refresh" class="venue-button" type="button" disabled>최신 상태 조회 ↻</button></div>
+        <div id="booking-admin-list" aria-busy="false"></div>
+        <div class="admin-pagination"><button id="booking-admin-prev" type="button" disabled>← 이전</button><span id="booking-admin-page">—</span><button id="booking-admin-next" type="button" disabled>다음 →</button></div>
+        <p class="admin-footnote">시스템 처리와 화면 조회 시점은 다를 수 있습니다. 최신 상태 조회로 서버의 결과를 다시 확인하세요.</p>
+    </section>
+</div>
+{% endblock %}
+{% block script %}
+<script src="{{ url_for('venue_assets', path='admin_booking_api.js').path }}"></script>
+<script src="{{ url_for('venue_assets', path='manage_bookings.js').path }}" defer></script>
+{% endblock %}

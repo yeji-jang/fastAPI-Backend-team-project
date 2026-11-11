@@ -1,0 +1,585 @@
+{% extends "catalog_base.html" %}
+{% block title %}공연장·공연 관리{% endblock %}
+
+{% block head %}
+<style>
+    :root {
+        --ink: #161616;
+        --paper: #f5f5f3;
+        --muted: #555;
+        --line: 1px solid var(--ink);
+        color: var(--ink);
+        background: var(--paper);
+        font: 16px/1.5 Arial, "Apple SD Gothic Neo", sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; }
+    a { color: inherit; text-underline-offset: .25em; }
+    :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+    .catalog-nav {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .35rem 1rem;
+        min-height: 62px;
+        padding: .75rem clamp(1rem, 4vw, 3rem);
+        border-bottom: var(--line);
+        font-size: .84rem;
+    }
+    .catalog-nav a { text-decoration: none; }
+    .catalog-nav a:hover { text-decoration: underline; }
+    .manage { max-width: 1220px; margin: auto; padding: clamp(1.15rem, 5vw, 4rem); }
+    .manage-hero { border-bottom: var(--line); padding-bottom: clamp(1rem, 3vw, 2.5rem); }
+    .manage-kicker {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: .4rem 1rem;
+        margin: 0 0 .8rem;
+        font: 700 .72rem/1.4 monospace;
+        letter-spacing: .065em;
+    }
+    .manage-hero h1 {
+        margin: 0 0 .7rem;
+        font-size: clamp(2.25rem, 8vw, 6.3rem);
+        letter-spacing: -.08em;
+        line-height: 1.04;
+    }
+    .manage-hero p:last-child { color: var(--muted); margin: 0; }
+    #management-status:empty { display: none; }
+    #management-login a { display: inline-block; background: var(--ink); color: #fff; padding: .6rem 1rem; }
+    #management-forms { counter-reset: section; }
+    .manage-help { max-width: 46rem; margin: 1.1rem 0; font-size: .9rem; color: var(--muted); }
+    .manage details { counter-increment: section; border-top: var(--line); scroll-margin-top: 1rem; }
+    .manage details:last-child { border-bottom: var(--line); }
+    .manage summary {
+        display: grid;
+        grid-template-columns: 2rem minmax(0, 1fr) 1.3rem;
+        gap: .7rem;
+        align-items: center;
+        padding: clamp(.85rem, 2.5vw, 1.35rem) 0;
+        font-weight: 750;
+        font-size: clamp(1rem, 2.3vw, 1.5rem);
+        letter-spacing: -.035em;
+        cursor: pointer;
+        list-style: none;
+    }
+    .manage summary::-webkit-details-marker { display: none; }
+    .manage summary::before { content: counter(section, decimal-leading-zero); font: 700 .72rem monospace; }
+    .manage summary::after { content: "+"; text-align: center; font: 500 1.4rem/1 monospace; }
+    .manage details[open] > summary::after { content: "−"; }
+    .manage summary:hover { text-decoration: underline; text-underline-offset: .22em; }
+    .manage-panel-note { margin: -.2rem 0 .8rem 2.7rem; color: var(--muted); font-size: .88rem; }
+    .manage form {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .9rem 1.3rem;
+        background: #fff;
+        border: 1px solid #ccc;
+        padding: clamp(.9rem, 3vw, 1.75rem);
+        margin: 0 0 1rem;
+    }
+    .manage form p { margin: 0; min-width: 0; }
+    .manage-context { grid-column: 1 / -1; padding: .55rem 0; border-bottom: 1px solid #ccc; font-weight: 700; }
+    .manage-context:empty { display: none; }
+    .manage form label { display: grid; gap: .3rem; font-size: .84rem; font-weight: 700; }
+    .manage input, .manage select {
+        width: 100%;
+        min-width: 0;
+        min-height: 42px;
+        border: 1px solid #777;
+        background: #fff;
+        color: var(--ink);
+        padding: .4rem .55rem;
+        border-radius: 0;
+        font: inherit;
+        font-weight: 400;
+    }
+    .manage form button {
+        grid-column: 1 / -1;
+        justify-self: start;
+        background: var(--ink);
+        color: #fff;
+        border: var(--line);
+        border-radius: 0;
+        min-height: 44px;
+        min-width: 7.5rem;
+        padding: .45rem 1rem;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .manage form button:disabled { background: #eee; color: #555; cursor: wait; }
+    .manage .form-result { grid-column: 1 / -1; font-size: .9rem; }
+    .manage .form-result:empty, #seat-name-preview:empty { display: none; }
+    .seat-name-hint, #seat-name-preview { color: var(--muted); font-size: .8rem; }
+    #seat-name-preview { display: block; margin-top: .3rem; overflow-wrap: anywhere; }
+
+    @media (max-width: 540px) {
+        .catalog-nav { min-height: 52px; gap: .3rem .65rem; }
+        .manage form { grid-template-columns: minmax(0, 1fr); }
+    }
+</style>
+{% endblock %}
+
+
+{% macro field(label, name, kind="text", minimum=none, required=false) %}
+<p><label>{{ label }}
+    <input name="{{ name }}" type="{{ kind }}"{% if kind == "datetime-local" %} step="1"{% endif %}{% if minimum is not none %} min="{{ minimum }}"{% endif %}{% if required %} required{% endif %}>
+</label></p>
+{% endmacro %}
+
+{% macro actions(delete=false) %}
+<p><label>작업
+    <select name="operation">
+        <option value="POST">등록</option>
+        <option value="PATCH">수정</option>
+        {% if delete %}<option value="DELETE">삭제</option>{% endif %}
+    </select>
+</label></p>
+{% endmacro %}
+
+{% macro submit() %}
+<button type="submit">실행</button>
+<p class="form-result" role="status"></p>
+{% endmacro %}
+
+{% block content %}
+<div class="manage">
+    <header class="manage-hero">
+        <p class="manage-kicker"><span>ASYNC TICKET</span><span>SELLER DESK / 01</span></p>
+        <h1>공연장·공연 관리</h1>
+        <p>공연장부터 회차와 좌석까지, 관객에게 공개할 정보를 관리하세요.</p>
+    </header>
+    <p id="management-status" role="status">관리 권한을 확인하는 중…</p>
+    <p id="management-login" hidden><a href="/login">로그인</a></p>
+
+    <div id="management-forms" hidden>
+        <p class="manage-help"><a href="/manage">저장된 공연·회차·좌석 보기</a> · 수정할 항목을 선택하면 기존 정보가 입력돼요.</p>
+
+        <details id="venue-management">
+            <summary>공연장 등록·수정</summary>
+            <form data-resource="venue">
+                {{ actions() }}
+                {{ field("공연장 ID (수정 시)", "venues_id", "number", 1) }}
+                {{ field("이름", "name", required=true) }}
+                {{ field("주소", "address", required=true) }}
+                {{ field("상세 주소", "address_detail") }}
+                {{ field("우편번호 (등록 시 필수)", "post_no") }}
+                {{ submit() }}
+            </form>
+        </details>
+
+        <details id="show-management">
+            <summary>공연 등록·수정·삭제</summary>
+            <p class="manage-panel-note">공연장과 공연 제목, 소개, 출연자 정보를 입력하세요.</p>
+            <form data-resource="show">
+                <p class="manage-context" data-context></p>
+                {{ actions(delete=true) }}
+                {{ field("공연 ID (수정·삭제 시)", "_id", "number", 1) }}
+                <p><label>공연장
+                    <select name="venues_id" data-number>
+                        <option value="">공연장을 선택하세요</option>
+                    </select>
+                </label></p>
+                {{ field("제목", "title") }}
+                {{ field("공연 분류", "type") }}
+                {{ field("공연 소개", "description") }}
+                {{ field("출연자", "performer") }}
+                {{ field("공연 시간(분)", "runtime", "number", 1) }}
+                {{ submit() }}
+            </form>
+        </details>
+
+        <details id="performance-management">
+            <summary>회차 등록·수정·삭제</summary>
+            <form data-resource="performance">
+                <p class="manage-context" data-context></p>
+                {{ actions(delete=true) }}
+                {{ field("공연 ID (등록 시)", "_show_id", "number", 1) }}
+                {{ field("회차 ID (수정·삭제 시)", "_id", "number", 1) }}
+                {{ field("회차 번호", "round_number", "number", 1) }}
+                {{ field("공연 시작 (한국 시간)", "starts_at", "datetime-local") }}
+                {{ field("공연 종료 (한국 시간)", "ends_at", "datetime-local") }}
+                {{ field("예매 시작 (한국 시간)", "booking_opens_at", "datetime-local") }}
+                {{ field("예매 마감 (한국 시간)", "booking_closes_at", "datetime-local") }}
+                {{ field("1인당 최대 매수", "max_tickets_per_user", "number", 1) }}
+                {{ field("운영 상태", "status") }}
+                {{ submit() }}
+            </form>
+        </details>
+
+        <details id="seat-management">
+            <summary>좌석 등급 구성·가격 변경</summary>
+            <p class="manage-panel-note">회차를 지정하고 등급과 좌석명을 입력하세요. 기존 등급 가격은 등급 ID로 수정할 수 있어요.</p>
+            <form data-resource="seat">
+                <p class="manage-context" data-context></p>
+                {{ actions() }}
+                {{ field("회차 ID", "_perf_id", "number", 1, required=true) }}
+                {{ field("좌석 등급 ID (가격 수정 시)", "_id", "number", 1) }}
+                <p><label>등급 (등록 시)
+                    <select name="name">
+                        <option value="">선택</option>
+                        <option value="R석">R석</option>
+                        <option value="S석">S석</option>
+                    </select>
+                </label></p>
+                <p>
+                    <label for="seat-name-input">좌석명 (등록 시)</label>
+                    <input id="seat-name-input" name="seat_seqs" autocomplete="off"
+                           placeholder="R-01~R-100" aria-describedby="seat-name-hint seat-name-preview">
+                    <small class="seat-name-hint" id="seat-name-hint">범위나 좌석명을 쉼표로 나눠 입력하세요.</small>
+                    <output id="seat-name-preview" for="seat-name-input" aria-live="polite"></output>
+                </p>
+                {{ field("가격(원)", "price", "number", 0, required=true) }}
+                {{ submit() }}
+            </form>
+        </details>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    const token = sessionStorage.getItem("asyncticket_access_token");
+    const authHeaders = { Authorization: `Bearer ${token}` };
+    const managementStatus = document.querySelector("#management-status");
+    const loadedFields = new WeakMap();
+
+    function showLogin() {
+        managementStatus.textContent = "판매자 또는 관리자 계정으로 로그인해 주세요.";
+        document.querySelector("#management-login").hidden = false;
+        document.querySelector("#management-forms").hidden = true;
+    }
+
+    async function checkRole() {
+        if (!token) {
+            showLogin();
+            return;
+        }
+
+        try {
+            const user = await accountSession.current();
+            if (!accountSession.canManage(user)) {
+                showLogin();
+                return;
+            }
+
+            document.querySelector("#management-forms").hidden = false;
+            const section = document.getElementById(location.hash.slice(1));
+            if (section instanceof HTMLDetailsElement) {
+                section.open = true;
+                await prefill(section.querySelector("form"));
+            } else {
+                document.querySelector("#show-management").addEventListener("toggle", async event => {
+                    if (event.currentTarget.open) await prefill(event.currentTarget.querySelector("form"));
+                });
+            }
+            managementStatus.textContent = "";
+        } catch (error) {
+            if (error.status === 401) {
+                sessionStorage.removeItem("asyncticket_access_token");
+                showLogin();
+            } else {
+                managementStatus.textContent = error.message;
+            }
+        }
+    }
+
+    function seoulDateTime(value) {
+        const formatter = new Intl.DateTimeFormat("sv-SE", {
+            timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+        });
+        return formatter.format(new Date(value)).replace(" ", "T");
+    }
+
+    let venueOptionsRequest;
+    function loadVenueOptions() {
+        if (venueOptionsRequest) return venueOptionsRequest;
+
+        const select = document.querySelector('form[data-resource="show"] select[name="venues_id"]');
+        venueOptionsRequest = (async () => {
+            const options = [];
+            for (let page = 1; ; page++) {
+                const venues = await requestApi(`/v1/venues/list?page=${page}&page_size=100`);
+                for (const venue of venues) options.push(new Option(venue.name, venue.venues_id));
+                if (venues.length < 100) break;
+            }
+            select.append(...options);
+        })().catch(error => {
+            venueOptionsRequest = null;
+            throw error;
+        });
+        return venueOptionsRequest;
+    }
+
+    function bindField(form, name, value) {
+        const input = form.elements.namedItem(name);
+        input.value = value;
+        input.readOnly = true;
+        input.closest("p").hidden = true;
+    }
+
+    function bindOperation(form, operation) {
+        const actions = form.elements.namedItem("operation");
+        actions.value = operation;
+        for (const option of actions.options) {
+            option.disabled = operation === "POST" ? option.value !== "POST" : option.value === "POST";
+        }
+    }
+
+    async function prefill(form) {
+        const params = new URLSearchParams(location.search);
+        const id = key => {
+            const value = params.get(key);
+            return /^[1-9][0-9]{0,18}$/.test(value || "") ? value : null;
+        };
+        const resource = form.dataset.resource;
+        const button = form.querySelector('button[type="submit"]');
+        const context = form.querySelector("[data-context]");
+        const showId = id("show_id");
+        const performanceId = id("performance_id");
+        const gradeId = id("seat_id");
+        const parentShow = id("for_show");
+        const parentRound = id("for_performance");
+
+        button.disabled = true;
+        try {
+            let record;
+            let recordId;
+            if (resource === "show") {
+                await loadVenueOptions();
+                if (showId) {
+                    record = await requestApi(`/v1/shows/${showId}`, { cache: "no-store" });
+                    recordId = showId;
+                    context.textContent = record.title;
+                } else if (location.hash === "#show-management") {
+                    bindField(form, "_id", "");
+                    bindOperation(form, "POST");
+                    form.elements.namedItem("venues_id").required = true;
+                }
+            } else if (resource === "performance" && performanceId) {
+                record = await requestApi(`/v1/performances/${performanceId}`, { cache: "no-store" });
+                recordId = performanceId;
+                const show = await requestApi(`/v1/shows/${record.show_id}`);
+                context.textContent = `${show.title} · ${record.round_number}회차`;
+                bindField(form, "_show_id", record.show_id);
+            } else if (resource === "performance" && parentShow) {
+                const show = await requestApi(`/v1/shows/${parentShow}`);
+                context.textContent = show.title;
+                bindField(form, "_show_id", show.show_id);
+                bindField(form, "_id", "");
+                bindOperation(form, "POST");
+            } else if (resource === "seat" && (parentRound || (performanceId && gradeId))) {
+                const roundId = parentRound || performanceId;
+                const round = await requestApi(`/v1/performances/${roundId}`);
+                const show = await requestApi(`/v1/shows/${round.show_id}`);
+                context.textContent = `${show.title} · ${round.round_number}회차`;
+                bindField(form, "_perf_id", roundId);
+                if (parentRound) {
+                    bindField(form, "_id", "");
+                    bindOperation(form, "POST");
+                } else {
+                    record = await requestApi(`/v1/performances/${roundId}/seat-infos/${gradeId}`, { cache: "no-store" });
+                    recordId = gradeId;
+                    context.textContent += ` · ${record.name || "좌석 등급"}`;
+                    form.elements.namedItem("name").closest("p").hidden = true;
+                    form.elements.namedItem("seat_seqs").closest("p").hidden = true;
+                }
+            }
+            if (!record) return;
+
+            bindField(form, "_id", recordId);
+            bindOperation(form, "PATCH");
+            for (const [name, value] of Object.entries(record)) {
+                const input = form.elements.namedItem(name);
+                if (!input || value == null || (resource === "seat" && name !== "price")) continue;
+                input.value = input.type === "datetime-local" ? seoulDateTime(value) : value;
+            }
+            if (resource !== "seat") loadedFields.set(form, readFields(form));
+        } catch (error) {
+            form.querySelector(".form-result").textContent = error.message;
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    function readFields(form) {
+        const fields = {};
+        for (const [key, raw] of new FormData(form)) {
+            if (key === "operation" || key.startsWith("_")) continue;
+            const value = raw.trim();
+            if (!value) continue;
+
+            const input = form.elements.namedItem(key);
+            if (input.type === "number" || input.hasAttribute("data-number")) {
+                fields[key] = Number(value);
+            } else if (input.type === "datetime-local") {
+                fields[key] = `${value}+09:00`;
+            } else {
+                fields[key] = value;
+            }
+        }
+        return fields;
+    }
+
+    function requiredId(form, key, label) {
+        const value = form.elements.namedItem(key).value;
+        if (!/^[1-9]\d*$/.test(value)) throw new Error(`${label}를 입력해 주세요.`);
+        return value;
+    }
+
+    function expandSeatNames(value) {
+        const names = new Set();
+        const maxGenerated = 2000;
+        let generated = 0;
+
+        function add(name) {
+            if (names.has(name)) throw new Error(`중복된 좌석명: ${name}`);
+            names.add(name);
+        }
+
+        for (const part of value.split(",").map(name => name.trim()).filter(Boolean)) {
+            const range = part.match(/^([^~]*?)([0-9]+)\s*~\s*([^~]*?)([0-9]+)$/);
+            if (!range) {
+                add(part);
+                continue;
+            }
+
+            const [, prefix, start, endPrefix, end] = range;
+            if (prefix !== endPrefix) throw new Error("범위의 앞뒤 좌석명은 같은 접두어를 사용해 주세요.");
+            const first = BigInt(start);
+            const last = BigInt(end);
+            if (last < first) throw new Error("좌석 범위의 끝 번호는 시작 번호 이상이어야 합니다.");
+            if (String(last).padStart(start.length, "0") !== end) {
+                throw new Error("범위의 끝 번호도 시작 번호와 같은 자리수 규칙으로 입력해 주세요.");
+            }
+            const count = last - first + 1n;
+            if (count > BigInt(maxGenerated - generated)) {
+                throw new Error(`한 번에 범위로 만들 수 있는 좌석은 최대 ${maxGenerated.toLocaleString("ko-KR")}석입니다.`);
+            }
+
+            generated += Number(count);
+            for (let number = first; number <= last; number++) {
+                add(prefix + String(number).padStart(start.length, "0"));
+            }
+        }
+        return [...names];
+    }
+
+    const seatNameInput = document.querySelector("#seat-name-input");
+    const seatNamePreview = document.querySelector("#seat-name-preview");
+    const seatOperation = seatNameInput.form.elements.namedItem("operation");
+
+    function updateSeatPreview() {
+        seatNamePreview.textContent = "";
+        if (seatOperation.value !== "POST") return;
+
+        try {
+            const names = expandSeatNames(seatNameInput.value);
+            if (!names.length) return;
+            const sample = names.length === 1 ? names[0] : `${names[0]} … ${names.at(-1)}`;
+            seatNamePreview.textContent = `${names.length.toLocaleString("ko-KR")}석 · ${sample}`;
+        } catch (error) {
+            seatNamePreview.textContent = error.message;
+        }
+    }
+
+    seatNameInput.addEventListener("input", updateSeatPreview);
+    seatOperation.addEventListener("change", updateSeatPreview);
+
+    function buildRequest(form, method) {
+        let fields = readFields(form);
+        const creating = method === "POST";
+        const previous = loadedFields.get(form);
+        if (method === "PATCH" && previous) {
+            if (form.dataset.resource === "show") {
+                for (const name of ["description", "performer", "runtime"]) {
+                    if (name in previous && !(name in fields)) fields[name] = null;
+                }
+            }
+            fields = Object.fromEntries(Object.entries(fields).filter(([name, value]) => previous[name] !== value));
+            if (!Object.keys(fields).length) throw new Error("수정할 내용을 입력해 주세요.");
+        }
+
+        switch (form.dataset.resource) {
+            case "venue":
+                if (creating) {
+                    delete fields.venues_id;
+                    fields.address_detail ??= null;
+                } else {
+                    requiredId(form, "venues_id", "공연장 ID");
+                    fields.address_detail ??= null;
+                }
+                return { url: "/v1/venues", fields };
+            case "show":
+                return {
+                    url: creating ? "/v1/shows" : `/v1/shows/${requiredId(form, "_id", "공연 ID")}`,
+                    fields,
+                };
+            case "performance":
+                return {
+                    url: creating
+                        ? `/v1/shows/${requiredId(form, "_show_id", "공연 ID")}/performances`
+                        : `/v1/performances/${requiredId(form, "_id", "회차 ID")}`,
+                    fields,
+                };
+            case "seat": {
+                const base = `/v1/performances/${requiredId(form, "_perf_id", "회차 ID")}/seat-infos`;
+                if (!creating) {
+                    return {
+                        url: `${base}/${requiredId(form, "_id", "좌석 등급 ID")}`,
+                        fields: { price: fields.price },
+                    };
+                }
+                const names = expandSeatNames(fields.seat_seqs || "");
+                if (!names.length) throw new Error("등록할 좌석명이나 좌석 범위를 입력해 주세요.");
+                return {
+                    url: base,
+                    fields: { name: fields.name, price: fields.price, total_seat: names.length, seat_seqs: names },
+                };
+            }
+        }
+    }
+
+    for (const form of document.querySelectorAll("form[data-resource]")) {
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const result = form.querySelector(".form-result");
+            const button = form.querySelector('button[type="submit"]');
+            const method = form.elements.namedItem("operation").value;
+            if (method === "DELETE" && !window.confirm("이 항목을 삭제할까요?")) return;
+
+            button.disabled = true;
+            result.textContent = "처리 중…";
+            try {
+                const { url, fields } = buildRequest(form, method);
+                const options = { method, headers: authHeaders };
+                if (method !== "DELETE") {
+                    options.headers = { ...authHeaders, "Content-Type": "application/json" };
+                    options.body = JSON.stringify(fields);
+                }
+
+                const saved = await requestApi(url, options);
+                const idFields = { venue: "venues_id", show: "show_id", performance: "perf_id", seat: "seat_id" };
+                const id = saved?.[idFields[form.dataset.resource]];
+                result.textContent = id ? `처리했습니다. ID: ${id}` : "처리했습니다.";
+                if (method === "PATCH" && loadedFields.has(form)) loadedFields.set(form, readFields(form));
+            } catch (error) {
+                result.textContent = error.message;
+                if (error.status === 401) {
+                    sessionStorage.removeItem("asyncticket_access_token");
+                    showLogin();
+                }
+            } finally {
+                button.disabled = false;
+            }
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", checkRole);
+</script>
+{% endblock %}

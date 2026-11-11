@@ -1,0 +1,19 @@
+# Amazon Linux 2023 / Python 가상환경 직접 실행 예시.
+# 실제 서버의 사용자·프로젝트 경로에 맞춰 수정한다.
+[Unit]
+Description=AsyncTicket API
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/asyncticket-demo/AsyncTicket
+ExecStart=/home/ec2-user/asyncticket-demo/AsyncTicket/.venv/bin/uvicorn asyncticket.main:app --host 127.0.0.1 --port 8000
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

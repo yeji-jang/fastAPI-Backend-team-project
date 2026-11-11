@@ -1,0 +1,15 @@
+{% extends "catalog_base.html" %}
+{% block title %}결제 결과{% endblock %}
+{% block head %}{% include "catalog_detail_styles.html" %}<link rel="stylesheet" href="{{ url_for('venue_assets', path='venues.css').path }}"><meta name="referrer" content="no-referrer">{% endblock %}
+{% block content %}
+<div class="detail-page" data-payment-result="{{ result }}">
+    <header class="detail-header"><p class="detail-kicker">PAYMENT</p><h1>결제 결과</h1></header>
+    <p id="payment-status" role="status"></p>
+    <button id="approve" class="venue-button" type="button" hidden>상태 확인·승인 재시도</button>
+    <p><a href="/me/reservations">내 예매 확인</a></p>
+</div>
+{% endblock %}
+{% block script %}
+<script src="{{ url_for('venue_assets', path='booking.js').path }}"></script>
+<script src="{{ url_for('venue_assets', path='payment_result.js').path }}" defer></script>
+{% endblock %}
