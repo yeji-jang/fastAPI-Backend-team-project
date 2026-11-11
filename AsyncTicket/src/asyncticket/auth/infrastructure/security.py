@@ -6,11 +6,11 @@ import jwt
 from jwt import InvalidTokenError
 
 from asyncticket.auth.domain.service import (
+    AuthRole,
     AccessTokenPayload,
     TokenProvider,
 )
 from asyncticket.auth.domain.exceptions import InvalidAccessTokenError
-from asyncticket.users.domain.users import UserRole
 
 
 class JwtTokenProvider(TokenProvider):
@@ -41,7 +41,7 @@ class JwtTokenProvider(TokenProvider):
     def issue_access_token(
         self,
         user_id: int,
-        role: UserRole,
+        role: AuthRole,
     ) -> AccessTokenPayload:
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(
@@ -93,7 +93,7 @@ class JwtTokenProvider(TokenProvider):
                 )
 
             user_id = int(subject)
-            role = UserRole(role_value)
+            role = AuthRole(role_value)
             expires_at = datetime.fromtimestamp(
                 int(exp),
                 tz=timezone.utc,
